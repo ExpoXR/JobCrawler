@@ -1,0 +1,750 @@
+/* MapLibre's own stylesheet must be imported before any local rules. */
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/*
+ * Design tokens and base styles.
+ *
+ * Light and dark are both defined on :root so the app respects the visitor's
+ * system setting without JavaScript. Accessibility (plan section 27): status is
+ * never communicated by colour alone — every coloured element carries a shape,
+ * an icon or a text label as well.
+ */
+
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-alt: #f1f3f6;
+  --border: #d8dde5;
+  --text: #14181f;
+  --text-muted: #5b6472;
+  --accent: #1f5eff;
+  --accent-contrast: #ffffff;
+  --success: #0d7a4a;
+  --warning: #9a5b00;
+  --danger: #b3261e;
+
+  --match-high: #0d7a4a;
+  --match-medium: #9a5b00;
+  --match-low: #5b6472;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgb(20 24 31 / 8%), 0 4px 12px rgb(20 24 31 / 6%);
+
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216;
+    --surface: #171c22;
+    --surface-alt: #1e242c;
+    --border: #2c343e;
+    --text: #eef1f5;
+    --text-muted: #9aa5b4;
+    --accent: #6f9bff;
+    --accent-contrast: #0f1216;
+    --success: #4ec38a;
+    --warning: #e0a44a;
+    --danger: #ff8a80;
+
+    --match-high: #4ec38a;
+    --match-medium: #e0a44a;
+    --match-low: #9aa5b4;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 14px rgb(0 0 0 / 30%);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover,
+a:focus-visible {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0 0 0.5rem;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+h1 {
+  font-size: 1.9rem;
+}
+h2 {
+  font-size: 1.35rem;
+}
+h3 {
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 0 0 0.75rem;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* --- Layout ------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.app-header .brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 0.5rem;
+  z-index: 100;
+  background: var(--surface);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+/* --- Home --------------------------------------------------------------- */
+
+.hero {
+  max-width: 720px;
+  margin: 4rem auto 2rem;
+  text-align: center;
+}
+
+.hero p.lede {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+}
+
+.mode-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.mode-card {
+  display: block;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-align: left;
+  color: var(--text);
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.mode-card:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.mode-card strong {
+  display: block;
+  font-size: 1.1rem;
+  margin-bottom: 0.35rem;
+}
+
+.mode-card span {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+/* --- Search layout ------------------------------------------------------ */
+
+.search-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(320px, 1fr) minmax(280px, 420px);
+  gap: 1rem;
+  align-items: start;
+  padding: 1rem;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+@media (max-width: 1100px) {
+  .search-layout {
+    grid-template-columns: 1fr;
+  }
+  .map-column {
+    order: -1;
+    height: 320px;
+  }
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.panel h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.filters-column {
+  position: sticky;
+  top: 4.5rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+
+.map-column {
+  position: sticky;
+  top: 4.5rem;
+  height: calc(100vh - 6rem);
+}
+
+/* --- Forms -------------------------------------------------------------- */
+
+.field {
+  margin-bottom: 0.9rem;
+}
+
+.field label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.field input[type='text'],
+.field input[type='number'],
+.field input[type='search'],
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.field textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.field .hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.chip.matched {
+  border-color: var(--match-high);
+  color: var(--match-high);
+  font-weight: 600;
+}
+
+.chip.missing {
+  border-style: dashed;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.button.full {
+  width: 100%;
+}
+
+/* --- Results ------------------------------------------------------------ */
+
+.result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+}
+
+.result-card:hover,
+.result-card:focus-within {
+  border-color: var(--accent);
+}
+
+.result-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* Potential employers are visually distinct from vacancies (plan section 18). */
+.result-card.potential {
+  border-left: 4px solid var(--warning);
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--warning) 6%, var(--surface)),
+    var(--surface) 40%
+  );
+}
+
+.result-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.result-title {
+  font-weight: 650;
+  font-size: 1.02rem;
+  margin: 0;
+}
+
+.result-company {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  margin-top: 0.4rem;
+}
+
+.score-badge {
+  flex: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 3.4rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--match-low);
+  color: var(--match-low);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.score-badge .label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.score-badge.high {
+  border-color: var(--match-high);
+  color: var(--match-high);
+}
+
+.score-badge.medium {
+  border-color: var(--match-medium);
+  color: var(--match-medium);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.badge.vacancy {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.badge.potential {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.8rem;
+  font-size: 0.84rem;
+}
+
+.evidence-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.evidence-list .marker {
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.evidence-list .match .marker {
+  color: var(--match-high);
+}
+.evidence-list .partial .marker {
+  color: var(--match-medium);
+}
+.evidence-list .miss .marker {
+  color: var(--danger);
+}
+.evidence-list .info .marker {
+  color: var(--text-muted);
+}
+
+/* --- Progress ----------------------------------------------------------- */
+
+.progress {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--surface-alt);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 0.45rem;
+}
+
+.progress-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 400ms ease;
+}
+
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.86rem;
+}
+
+/* --- Map ---------------------------------------------------------------- */
+
+.map-container {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+}
+
+.map-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.map-legend .swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.map-legend .dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 2px solid currentColor;
+  display: inline-block;
+}
+
+.map-legend .dot.job {
+  border-radius: 50%;
+  color: var(--match-high);
+}
+
+/* Square marker + colour: shape carries the meaning too. */
+.map-legend .dot.potential {
+  border-radius: 2px;
+  color: var(--warning);
+}
+
+.map-legend .dot.candidate {
+  border-radius: 2px;
+  transform: rotate(45deg);
+  color: var(--accent);
+}
+
+/* --- Detail page -------------------------------------------------------- */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.confidence {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid currentColor;
+}
+
+.confidence.confirmed {
+  color: var(--success);
+}
+.confidence.inferred {
+  color: var(--warning);
+}
+.confidence.uncertain {
+  color: var(--text-muted);
+}
+
+.component-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.component-table th,
+.component-table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.component-table td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.source-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.86rem;
+  word-break: break-all;
+}
+
+.source-list li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* --- Admin -------------------------------------------------------------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+}
+
+.stat .value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat .label {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.status-ok {
+  color: var(--success);
+  font-weight: 600;
+}
+.status-bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.notice {
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.notice.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

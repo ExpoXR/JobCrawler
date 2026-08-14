@@ -1,0 +1,39 @@
+{
+  "name": "expojobcrawler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI-powered geographic employment research engine for Europe",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@ejc/web",
+    "dev:worker": "npm run dev --workspace=@ejc/worker",
+    "build": "npm run build --workspace=@ejc/web",
+    "start": "npm run start --workspace=@ejc/web",
+    "migrate": "tsx packages/database/src/cli/migrate.ts",
+    "migrate:status": "tsx packages/database/src/cli/migrate.ts status",
+    "seed": "tsx packages/database/src/cli/seed.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.39.0",
+    "globals": "^15.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^2.1.8"
+  }
+}
