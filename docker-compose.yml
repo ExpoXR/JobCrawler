@@ -1,0 +1,117 @@
+# ExpoJobCrawler — self-hosted stack.
+#
+#   docker compose up -d          start everything
+#   docker compose run --rm migrate   apply database migrations
+#
+# Postgres and Redis are not published to the host by default: only the web
+# service is reachable from outside the compose network.
+
+name: expojobcrawler
+
+services:
+  postgres:
+    # PostGIS + pgvector: see docker/postgres/Dockerfile for why this is built
+    # rather than pulled.
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-expojobcrawler}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-expojobcrawler}
+      # Postgres refuses to start an initdb without this when trust is disabled.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-expojobcrawler} -d ${POSTGRES_DB:-expojobcrawler}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  # One-shot migration runner. Not started by `up`; invoke it explicitly.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    profiles: ['tools']
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
+      MIGRATIONS_DIR: /app/migrations
+    command: ['npx', 'tsx', 'packages/database/src/cli/migrate.ts']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
+      REDIS_URL: redis://redis:6379
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
+      REDIS_URL: redis://redis:6379
+      MIGRATIONS_DIR: /app/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Crawling is I/O bound; a couple of replicas saturate a small host well.
+    deploy:
+      replicas: 1
+    networks: [internal]
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  internal:
+    driver: bridge
