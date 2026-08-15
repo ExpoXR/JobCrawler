@@ -23,3 +23,7 @@ Thumbs.db
 
 pgdata/
 redisdata/
+
+.claude/*
+Agents.md
+CLAUDE.md

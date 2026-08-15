@@ -78,3 +78,33 @@ worker runs them with `tsx`, Vitest reads them directly.
 - No business logic in React components; no giant route files
 - Structured logging only — never log secrets
 - Providers and AI vendors are pluggable; never hard-code one at a call site
+
+## Caveman Skills
+
+Ultra-compressed communication mode available. Cuts ~75% output tokens, full technical accuracy.
+
+| Command | What |
+|---------|------|
+| `/caveman` | Activate (full mode default) |
+| `/caveman lite\|full\|ultra` | Switch intensity |
+| `/caveman-commit` | Terse Conventional Commits message |
+| `/caveman-review` | One-line PR comments: `L42: 🔴 bug: user null. Add guard.` |
+| `/caveman-help` | Quick-reference card |
+| `/caveman-compress <file>` | Compress .md file → ~46% fewer input tokens |
+
+Stop: "stop caveman" or "normal mode". Skills in `.claude/skills/`, commands in `.claude/commands/`.
+
+## Skills Reference / Agent communication
+
+Caveman skill is available for terse AI communication:
+
+```
+/caveman        — activate full caveman mode
+/caveman lite   — no filler, keep full sentences
+/caveman ultra  — maximum abbreviation
+stop caveman    — return to normal mode
+```
+
+Location: `.claude/skills/caveman/`. Caveman mode stays active across responses. Terse chat is
+fine; **write full normal prose in code, commits, PRs, and these docs.** Never let terse wording
+weaken security warnings, irreversible-action confirmations, or release steps.
