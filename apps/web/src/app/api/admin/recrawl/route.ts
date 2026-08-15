@@ -12,7 +12,7 @@ const requestSchema = z.union([
   z.object({ action: z.literal('company'), companyId: z.uuid() }),
   z.object({
     action: z.literal('maintenance'),
-    task: z.enum(['expired-caches', 'expired-searches', 'stale-jobs']),
+    task: z.enum(['expired-caches', 'expired-searches', 'stale-jobs', 'backfill-embeddings']),
   }),
 ]);
 

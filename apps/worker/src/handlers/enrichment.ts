@@ -13,6 +13,8 @@ import {
   getJobById,
   getSearchSession,
   query as dbQuery,
+  setCandidateEmbedding,
+  setCompanyEmbedding,
   setJobEmbedding,
 } from '@ejc/database';
 import { createWorker, type WorkerHandle } from '@ejc/queue';
@@ -47,24 +49,14 @@ export function registerEnrichmentWorkers(): WorkerHandle[] {
       const company = await getCompanyById(subjectId);
       if (!company) return;
       const vector = await embedText(buildCompanyEmbeddingText(company));
-      if (vector) {
-        await dbQuery(`UPDATE companies SET embedding = $2::vector WHERE id = $1`, [
-          subjectId,
-          `[${vector.join(',')}]`,
-        ]);
-      }
+      if (vector) await setCompanyEmbedding(subjectId, vector);
       return;
     }
 
     const candidate = await getCandidateById(subjectId);
     if (!candidate) return;
     const vector = await embedText(buildCandidateEmbeddingText(candidate));
-    if (vector) {
-      await dbQuery(`UPDATE candidates SET embedding = $2::vector WHERE id = $1`, [
-        subjectId,
-        `[${vector.join(',')}]`,
-      ]);
-    }
+    if (vector) await setCandidateEmbedding(subjectId, vector);
   });
 
   const aiAnalysis = createWorker('ai-analysis', async (job) => {

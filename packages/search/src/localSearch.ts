@@ -63,12 +63,18 @@ export async function searchLocalIndex(
       radiusKm: query.radiusKm,
       limit,
       activeOnly: true,
+      ...(queryEmbedding ? { queryEmbedding } : {}),
       ...(query.role ? { titleQuery: query.role } : {}),
       ...(query.workModels.length > 0 ? { workModels: query.workModels } : {}),
       ...(query.employmentTypes.length > 0 ? { employmentTypes: query.employmentTypes } : {}),
     }),
     query.includePotentialEmployers
-      ? findCompaniesWithinRadius({ center, radiusKm: query.radiusKm, limit })
+      ? findCompaniesWithinRadius({
+          center,
+          radiusKm: query.radiusKm,
+          limit,
+          ...(queryEmbedding ? { queryEmbedding } : {}),
+        })
       : Promise.resolve([]),
   ]);
 
@@ -78,7 +84,7 @@ export async function searchLocalIndex(
   const items: SearchResultItem[] = [];
   const companiesWithJobs = new Set<string>();
 
-  for (const { job, distanceKm } of jobRows) {
+  for (const { job, distanceKm, semanticSimilarity } of jobRows) {
     let company = job.companyId ? companiesById.get(job.companyId) : undefined;
     if (!company && job.companyId) {
       company = await getCompanyById(job.companyId);
@@ -88,7 +94,9 @@ export async function searchLocalIndex(
 
     const match = scoreJob(query, job, company, {
       distanceKm,
-      ...(queryEmbedding ? { semanticSimilarity: undefined } : {}),
+      // Only present when both the query and the job have embeddings; the
+      // matcher drops the component otherwise.
+      ...(semanticSimilarity !== undefined ? { semanticSimilarity } : {}),
     });
     if (match.rejected || match.score < query.minMatchScore) continue;
 
@@ -99,11 +107,14 @@ export async function searchLocalIndex(
   }
 
   if (query.includePotentialEmployers) {
-    for (const { company, distanceKm } of companyRows) {
+    for (const { company, distanceKm, semanticSimilarity } of companyRows) {
       // A company with an active vacancy already appears as a job result.
       if (companiesWithJobs.has(company.id) || company.activeJobCount > 0) continue;
 
-      const match = scorePotentialEmployer(query, company, { distanceKm });
+      const match = scorePotentialEmployer(query, company, {
+        distanceKm,
+        ...(semanticSimilarity !== undefined ? { semanticSimilarity } : {}),
+      });
       if (match.rejected || match.score < Math.max(query.minMatchScore, 25)) continue;
 
       items.push({

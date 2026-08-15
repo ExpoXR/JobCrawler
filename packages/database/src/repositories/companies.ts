@@ -5,7 +5,7 @@ import {
   type SourceReference,
 } from '@ejc/shared';
 
-import { query, queryOne, queryRows } from '../pool';
+import { query, queryOne, queryRows, toVectorLiteral } from '../pool';
 
 export interface CompanyRow {
   id: string;
@@ -232,11 +232,15 @@ export interface RadiusSearchOptions {
   technologies?: string[];
   industry?: string;
   onlyWithCareerPage?: boolean;
+  /** Query embedding; cosine similarity is computed in Postgres when given. */
+  queryEmbedding?: readonly number[];
 }
 
 export interface CompanyWithDistance {
   company: Company;
   distanceKm: number;
+  /** Cosine similarity to the query embedding, normalised to 0..1. */
+  semanticSimilarity?: number | undefined;
 }
 
 /** PostGIS radius search. Distance is returned so the UI never recomputes it. */
@@ -246,10 +250,14 @@ export async function findCompaniesWithinRadius(
   const { center, radiusKm } = options;
   const limit = Math.min(options.limit ?? 200, 1000);
 
-  const rows = await queryRows<CompanyRow & { distance_km: number }>(
+  const rows = await queryRows<
+    CompanyRow & { distance_km: number; semantic_distance: number | null }
+  >(
     `
       SELECT ${COMPANY_COLUMNS},
-             ST_Distance(location, $1::geography) / 1000.0 AS distance_km
+             ST_Distance(location, $1::geography) / 1000.0 AS distance_km,
+             CASE WHEN $7::vector IS NULL OR embedding IS NULL THEN NULL
+                  ELSE embedding <=> $7::vector END AS semantic_distance
       FROM companies
       WHERE location IS NOT NULL
         AND ST_DWithin(location, $1::geography, $2)
@@ -266,12 +274,17 @@ export async function findCompaniesWithinRadius(
       options.industry ?? null,
       options.onlyWithCareerPage ?? false,
       limit,
+      options.queryEmbedding ? toVectorLiteral(options.queryEmbedding) : null,
     ],
   );
 
   return rows.map((row) => ({
     company: mapCompanyRow(row),
     distanceKm: Number(row.distance_km),
+    semanticSimilarity:
+      row.semantic_distance === null
+        ? undefined
+        : Math.max(0, Math.min(1, (2 - Number(row.semantic_distance)) / 2)),
   }));
 }
 
@@ -336,4 +349,23 @@ export async function deleteCompaniesByDomain(domain: string): Promise<number> {
 export async function countCompanies(): Promise<number> {
   const row = await queryOne<{ count: string }>(`SELECT count(*)::text AS count FROM companies`);
   return Number(row?.count ?? 0);
+}
+
+export async function setCompanyEmbedding(
+  companyId: string,
+  embedding: readonly number[],
+): Promise<void> {
+  await query(`UPDATE companies SET embedding = $2::vector WHERE id = $1`, [
+    companyId,
+    toVectorLiteral(embedding),
+  ]);
+}
+
+/** Rows whose embedding is missing or stale, for the backfill worker. */
+export async function findCompaniesMissingEmbedding(limit = 100): Promise<Company[]> {
+  const rows = await queryRows<CompanyRow>(
+    `SELECT ${COMPANY_COLUMNS} FROM companies WHERE embedding IS NULL LIMIT $1`,
+    [limit],
+  );
+  return rows.map(mapCompanyRow);
 }

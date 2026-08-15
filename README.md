@@ -24,7 +24,7 @@ always linked back to the original page.
 | 2 | Geocoding, radius search, OSM/Overpass discovery, sitemap crawler, company extraction | Implemented |
 | 3 | Career-page detection, JSON-LD extraction, job normalisation, dedup, verification | Implemented |
 | 4 | AI provider abstraction, NL query parsing, embeddings, match scoring, explanations | Implemented |
-| 5 | Research agent with source provenance | Implemented (single-result analysis) |
+| 5 | Research agent with source provenance | Implemented (`/api/research` + detail-page panel) |
 | 6 | Candidate search (GitHub provider, lightweight index, matching) | Implemented |
 | 7 | Additional providers | Interfaces ready; only OSM/Overpass/career-page/GitHub shipped |
 | 8 | Export & administration | CSV + JSON export, admin dashboard; XLSX/PDF not implemented |
@@ -147,6 +147,17 @@ Only publicly available professional information is indexed, candidate records
 are deliberately minimal pointers back to the source, and removals are recorded
 in a suppression list so a later crawl cannot silently undo them.
 See [docs/security.md](docs/security.md).
+
+## Semantic search
+
+With an embedding provider configured, every discovered job, company and
+candidate is queued for embedding as it is written, and a half-hourly sweep
+backfills anything the queue missed. Search then computes cosine similarity
+**inside Postgres** (`embedding <=> $query`), so the 1536-float vectors never
+cross the wire, and feeds the result to the matcher as one scoring component.
+
+With `EMBEDDING_PROVIDER=none` the component is simply absent and scoring falls
+back to lexical signals.
 
 ## Documentation
 

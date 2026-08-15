@@ -11,6 +11,7 @@ import {
   upsertJob,
 } from '@ejc/database';
 import { scoreCandidate, scoreJob, scorePotentialEmployer } from '@ejc/matching';
+import { enqueue } from '@ejc/queue';
 import {
   careerPageProvider,
   getCandidateProviders,
@@ -60,7 +61,7 @@ async function persistDiscoveredCompany(
   if (domain && (await isSuppressed('domain', domain))) return undefined;
 
   try {
-    return await upsertCompany({
+    const company = await upsertCompany({
       name: discovered.name,
       ...(domain ? { domain } : {}),
       ...(discovered.website ? { website: discovered.website } : {}),
@@ -75,12 +76,35 @@ async function persistDiscoveredCompany(
       ...(discovered.publicPhone ? { publicPhone: discovered.publicPhone } : {}),
       ...(discovered.sourceId ? { osmId: discovered.sourceId } : {}),
     });
+    await queueEmbedding('company', company.id);
+    return company;
   } catch (error) {
     getLogger('search').debug('Company upsert failed', {
       company: discovered.name,
       message: error instanceof Error ? error.message : String(error),
     });
     return undefined;
+  }
+}
+
+/**
+ * Queues embedding generation for a freshly written row.
+ *
+ * Fire-and-forget: embeddings are an enhancement, so a missing Redis must not
+ * fail the discovery that produced the row.
+ */
+async function queueEmbedding(
+  subjectType: 'job' | 'company' | 'candidate',
+  subjectId: string,
+): Promise<void> {
+  try {
+    await enqueue(
+      'embedding',
+      { subjectType, subjectId },
+      { jobId: `embed:${subjectType}:${subjectId}` },
+    );
+  } catch {
+    // No queue available; the backfill sweep will pick the row up later.
   }
 }
 
@@ -223,6 +247,8 @@ export async function crawlCompanyForJobs(
       ...(crawl.sitemapUrls.length > 0 ? { sitemapUrls: crawl.sitemapUrls } : {}),
       markCrawled: true,
     });
+    // The crawl added description and technologies, so the vector is stale.
+    await queueEmbedding('company', company.id);
 
     const results: SearchResultInput[] = [];
     let jobsFound = 0;
@@ -268,6 +294,7 @@ export async function crawlCompanyForJobs(
           });
 
           jobsFound += 1;
+          await queueEmbedding('job', job.id);
 
           if (searchId && query) {
             const distanceKm =
@@ -395,6 +422,7 @@ export async function discoverCandidates(
           source: { provider: entry.provider, url: entry.profileUrl },
         });
         if (!candidate) continue;
+        await queueEmbedding('candidate', candidate.id);
 
         const distanceKm =
           query.location && candidate.coordinates

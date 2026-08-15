@@ -135,3 +135,11 @@ export async function checkDatabaseHealth(): Promise<DbHealth> {
     };
   }
 }
+
+/**
+ * Formats a vector for pgvector. Values are numbers, never user text, so this
+ * cannot introduce injection — but it stays in one place so the format does.
+ */
+export function toVectorLiteral(embedding: readonly number[]): string {
+  return `[${embedding.join(',')}]`;
+}

@@ -1,4 +1,10 @@
-import { clearExpiredCaches, deleteExpiredSearchSessions } from '@ejc/database';
+import {
+  clearExpiredCaches,
+  deleteExpiredSearchSessions,
+  findCompaniesMissingEmbedding,
+  findJobsMissingEmbedding,
+} from '@ejc/database';
+import { isEmbeddingEnabled } from '@ejc/ai';
 import { createWorker, enqueue, getQueue, type WorkerHandle } from '@ejc/queue';
 import { getConfig, getLogger } from '@ejc/shared';
 
@@ -33,6 +39,11 @@ export function registerCleanupWorkers(): WorkerHandle[] {
           await enqueueDueVerifications();
           break;
         }
+        case 'backfill-embeddings': {
+          const queued = await backfillEmbeddings();
+          logger.info('Queued embedding backfill', queued);
+          break;
+        }
         default:
           break;
       }
@@ -43,6 +54,42 @@ export function registerCleanupWorkers(): WorkerHandle[] {
   void scheduleMaintenance();
 
   return [cleanup];
+}
+
+/**
+ * Queues embeddings for rows that have none.
+ *
+ * The discovery path enqueues embeddings as it writes, but that enqueue is
+ * fire-and-forget: if Redis was briefly unavailable, or embeddings were only
+ * configured later, those rows would never get a vector. This sweep is the
+ * safety net that makes the pipeline eventually consistent.
+ */
+export async function backfillEmbeddings(
+  limit = 200,
+): Promise<{ jobs: number; companies: number }> {
+  if (!isEmbeddingEnabled()) return { jobs: 0, companies: 0 };
+
+  const [jobs, companies] = await Promise.all([
+    findJobsMissingEmbedding(limit),
+    findCompaniesMissingEmbedding(limit),
+  ]);
+
+  for (const job of jobs) {
+    await enqueue(
+      'embedding',
+      { subjectType: 'job', subjectId: job.id },
+      { jobId: `embed:job:${job.id}` },
+    );
+  }
+  for (const company of companies) {
+    await enqueue(
+      'embedding',
+      { subjectType: 'company', subjectId: company.id },
+      { jobId: `embed:company:${company.id}` },
+    );
+  }
+
+  return { jobs: jobs.length, companies: companies.length };
 }
 
 /**
@@ -67,6 +114,11 @@ export async function scheduleMaintenance(): Promise<void> {
     );
     await queue.add(
       'cleanup',
+      { task: 'backfill-embeddings' },
+      { repeat: { every: 30 * 60 * 1000 }, jobId: 'maintenance:embeddings' },
+    );
+    await queue.add(
+      'cleanup',
       { task: 'stale-jobs' },
       {
         repeat: { every: Math.max(1, config.retention.recrawlJobHours) * 60 * 60 * 1000 },
@@ -84,6 +136,8 @@ export async function scheduleMaintenance(): Promise<void> {
 }
 
 /** Manual trigger used by the admin dashboard. */
-export async function runCleanupNow(task: 'expired-caches' | 'expired-searches' | 'stale-jobs') {
+export async function runCleanupNow(
+  task: 'expired-caches' | 'expired-searches' | 'stale-jobs' | 'backfill-embeddings',
+): Promise<void> {
   await enqueue('cleanup', { task });
 }

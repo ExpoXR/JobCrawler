@@ -3,6 +3,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { ResearchPanel } from '@/components/ResearchPanel';
+
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
@@ -114,6 +116,8 @@ export default async function CompanyDetailPage({ params }: PageProps) {
         </div>
 
         <div>
+          <ResearchPanel companyId={company.id} />
+
           <section className="panel" style={{ marginBottom: '1rem' }}>
             <h2>Contact</h2>
             <ul className="source-list">

@@ -89,6 +89,11 @@ With no AI configured, `explainMatchWithoutAi` produces the explanation from the
 scoring evidence — which already states why a result ranked where it did. This
 is a real feature, not a placeholder.
 
+The agent is reachable at `POST /api/research` (`{ jobId | companyId, refresh }`)
+and from the "Research this" panel on every job and company detail page. The
+score handed to the agent is recomputed by `@ejc/matching` for that request, so
+the explanation always describes the same number the ranking used.
+
 Analyses are cached in `ai_analysis`, keyed by subject, kind, prompt version and
 an input hash, so repeated "research this" clicks do not re-bill the provider
 and a prompt change invalidates naturally.

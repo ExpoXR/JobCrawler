@@ -1,3 +1,4 @@
+export * from './analysisCache';
 export * from './embeddings';
 export * from './providers';
 export * from './queryParser';

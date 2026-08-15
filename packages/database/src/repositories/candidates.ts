@@ -1,6 +1,6 @@
 import type { Candidate, GeoPoint } from '@ejc/shared';
 
-import { query, queryOne, queryRows } from '../pool';
+import { query, queryOne, queryRows, toVectorLiteral } from '../pool';
 
 /**
  * Candidate storage (plan section 16).
@@ -221,4 +221,14 @@ export async function countCandidates(): Promise<number> {
     `SELECT count(*)::text AS count FROM candidates WHERE NOT is_removed`,
   );
   return Number(row?.count ?? 0);
+}
+
+export async function setCandidateEmbedding(
+  candidateId: string,
+  embedding: readonly number[],
+): Promise<void> {
+  await query(`UPDATE candidates SET embedding = $2::vector WHERE id = $1`, [
+    candidateId,
+    toVectorLiteral(embedding),
+  ]);
 }

@@ -10,7 +10,7 @@ import {
   type WorkModel,
 } from '@ejc/shared';
 
-import { query, queryOne, queryRows, withTransaction } from '../pool';
+import { query, queryOne, queryRows, toVectorLiteral, withTransaction } from '../pool';
 
 export interface JobRow {
   id: string;
@@ -366,6 +366,11 @@ export interface JobRadiusSearchOptions {
   employmentTypes?: EmploymentType[];
   activeOnly?: boolean;
   /**
+   * Query embedding. When supplied, cosine similarity is computed in Postgres
+   * so the 1536-float vectors never cross the wire.
+   */
+  queryEmbedding?: readonly number[];
+  /**
    * Include jobs with no coordinates whose company sits inside the radius.
    * Remote-friendly postings frequently omit a location.
    */
@@ -375,6 +380,17 @@ export interface JobRadiusSearchOptions {
 export interface JobWithDistance {
   job: Job;
   distanceKm: number | undefined;
+  /** Cosine similarity to the query embedding, normalised to 0..1. */
+  semanticSimilarity?: number | undefined;
+}
+
+/**
+ * pgvector's `<=>` is cosine *distance* in [0, 2]; the matcher wants a 0..1
+ * score. Kept here so the SQL and the JS agree on one convention.
+ */
+function toSemanticScore(distance: number | null): number | undefined {
+  if (distance === null || !Number.isFinite(distance)) return undefined;
+  return Math.max(0, Math.min(1, (2 - distance) / 2));
 }
 
 export async function findJobsWithinRadius(
@@ -384,10 +400,14 @@ export async function findJobsWithinRadius(
   const limit = Math.min(options.limit ?? 200, 1000);
   const point = `SRID=4326;POINT(${center.lon} ${center.lat})`;
 
-  const rows = await queryRows<JobRow & { distance_km: number | null }>(
+  const rows = await queryRows<
+    JobRow & { distance_km: number | null; semantic_distance: number | null }
+  >(
     `
       SELECT ${JOB_COLUMNS},
-             ST_Distance(COALESCE(j.location, c.location), $1::geography) / 1000.0 AS distance_km
+             ST_Distance(COALESCE(j.location, c.location), $1::geography) / 1000.0 AS distance_km,
+             CASE WHEN $9::vector IS NULL OR j.embedding IS NULL THEN NULL
+                  ELSE j.embedding <=> $9::vector END AS semantic_distance
       FROM jobs j
       LEFT JOIN companies c ON c.id = j.company_id
       WHERE COALESCE(j.location, c.location) IS NOT NULL
@@ -412,12 +432,16 @@ export async function findJobsWithinRadius(
       options.workModels?.length ? options.workModels : null,
       options.employmentTypes?.length ? options.employmentTypes : null,
       limit,
+      options.queryEmbedding ? toVectorLiteral(options.queryEmbedding) : null,
     ],
   );
 
   return rows.map((row) => ({
     job: mapJobRow(row),
     distanceKm: row.distance_km === null ? undefined : Number(row.distance_km),
+    semanticSimilarity: toSemanticScore(
+      row.semantic_distance === null ? null : Number(row.semantic_distance),
+    ),
   }));
 }
 
@@ -470,7 +494,7 @@ export async function findJobsDueForVerification(
 export async function setJobEmbedding(jobId: string, embedding: readonly number[]): Promise<void> {
   await query(`UPDATE jobs SET embedding = $2::vector WHERE id = $1`, [
     jobId,
-    `[${embedding.join(',')}]`,
+    toVectorLiteral(embedding),
   ]);
 }
 
@@ -487,7 +511,7 @@ export async function findSimilarJobsByEmbedding(
       ORDER BY j.embedding <=> $1::vector
       LIMIT $2
     `,
-    [`[${embedding.join(',')}]`, limit],
+    [toVectorLiteral(embedding), limit],
   );
   return rows.map((row) => ({ job: mapJobRow(row), distanceKm: undefined }));
 }
@@ -498,4 +522,13 @@ export async function countJobs(activeOnly = true): Promise<number> {
     [activeOnly],
   );
   return Number(row?.count ?? 0);
+}
+
+/** Active jobs with no embedding yet, for the backfill worker. */
+export async function findJobsMissingEmbedding(limit = 100): Promise<Job[]> {
+  const rows = await queryRows<JobRow>(
+    `SELECT ${JOB_COLUMNS} FROM jobs j WHERE j.embedding IS NULL AND j.is_active LIMIT $1`,
+    [limit],
+  );
+  return rows.map(mapJobRow);
 }

@@ -3,6 +3,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { ResearchPanel } from '@/components/ResearchPanel';
+
 export const dynamic = 'force-dynamic';
 
 /**
@@ -131,6 +133,8 @@ export default async function JobDetailPage({ params }: PageProps) {
               <p className="hint">No application URL was found.</p>
             )}
           </section>
+
+          <ResearchPanel jobId={job.id} />
 
           <section className="panel" style={{ marginBottom: '1rem' }}>
             <h2>Skills</h2>

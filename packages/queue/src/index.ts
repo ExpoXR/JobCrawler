@@ -42,7 +42,9 @@ export interface JobPayloads {
   'ai-analysis': { searchId: string; resultId: string };
   verification: { kind: 'job' | 'company' | 'candidate'; id: string };
   research: { searchId: string; jobId?: string; companyId?: string };
-  cleanup: { task: 'expired-caches' | 'expired-searches' | 'stale-jobs' };
+  cleanup: {
+    task: 'expired-caches' | 'expired-searches' | 'stale-jobs' | 'backfill-embeddings';
+  };
 }
 
 let connection: IORedis | undefined;

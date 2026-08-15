@@ -77,6 +77,12 @@ export function explainMatchWithoutAi(
   match: MatchResult,
   job: Job | undefined,
   company: Company | undefined,
+  /**
+   * False when the caller had no user query to score against — opening a result
+   * directly, rather than from a search. Quoting a percentage there would be
+   * meaningless, because there are no requirements to score against.
+   */
+  hasQueryContext = true,
 ): ResearchResult {
   const strengths = match.evidence
     .filter((entry) => entry.kind === 'match')
@@ -92,9 +98,12 @@ export function explainMatchWithoutAi(
   const at = company?.name && job ? ` at ${company.name}` : '';
 
   const summary =
-    `${subject}${at} scored ${match.score}%. ` +
+    (hasQueryContext ? `${subject}${at} scored ${match.score}%. ` : `${subject}${at}. `) +
     (strengths.length > 0 ? `Matching signals: ${strengths.join(', ')}. ` : '') +
-    (concerns.length > 0 ? `Gaps: ${concerns.join(', ')}.` : '');
+    (concerns.length > 0 ? `Gaps: ${concerns.join(', ')}.` : '') +
+    (hasQueryContext
+      ? ''
+      : ' Open this result from a search to see it scored against your requirements.');
 
   return {
     summary: summary.trim(),
@@ -170,6 +179,8 @@ function buildFactSheet(
 
 export interface ResearchOptions {
   signal?: AbortSignal;
+  /** False when there is no user query behind the request. */
+  hasQueryContext?: boolean;
 }
 
 /**
@@ -187,8 +198,11 @@ export async function researchOpportunity(
 ): Promise<ResearchResult> {
   const provider = getAiProvider();
   const sources = collectSources(job, company);
+  const hasQueryContext = Boolean(options.hasQueryContext ?? true);
 
-  if (!provider.configured) return explainMatchWithoutAi(match, job, company);
+  if (!provider.configured) {
+    return explainMatchWithoutAi(match, job, company, hasQueryContext);
+  }
 
   try {
     const factSheet = buildFactSheet(query, job, company, sources);
@@ -204,7 +218,7 @@ export async function researchOpportunity(
     });
 
     const parsed = parseResearchOutput(completion.text);
-    if (!parsed) return explainMatchWithoutAi(match, job, company);
+    if (!parsed) return explainMatchWithoutAi(match, job, company, hasQueryContext);
 
     const cited = parsed.citedSources
       .map((index) => sources[index])
@@ -225,7 +239,7 @@ export async function researchOpportunity(
       errorType: 'ai_failure',
       message: error instanceof Error ? error.message : String(error),
     });
-    return explainMatchWithoutAi(match, job, company);
+    return explainMatchWithoutAi(match, job, company, hasQueryContext);
   }
 }
 
