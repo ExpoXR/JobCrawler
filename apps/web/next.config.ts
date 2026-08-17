@@ -21,10 +21,6 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   serverExternalPackages: ['pg', 'bullmq', 'ioredis', 'cheerio'],
   poweredByHeader: false,
-  eslint: {
-    // Linting runs once at the repo root; re-running it during build is noise.
-    ignoreDuringBuilds: true,
-  },
   async headers() {
     return [
       {

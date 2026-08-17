@@ -43,6 +43,7 @@ export default async function AdminPage() {
 
   return (
     <div className="container">
+      <p className="ex-kicker">Operations workspace</p>
       <h1>Admin dashboard</h1>
 
       <div className="stat-grid">
@@ -64,7 +65,7 @@ export default async function AdminPage() {
         </div>
       </div>
 
-      <section className="panel" style={{ marginBottom: '1.25rem' }}>
+      <section className="panel admin-panel">
         <h2>Health</h2>
         <table className="component-table">
           <tbody>
@@ -114,7 +115,7 @@ export default async function AdminPage() {
         </table>
       </section>
 
-      <section className="panel" style={{ marginBottom: '1.25rem' }}>
+      <section className="panel admin-panel">
         <h2>Queues</h2>
         {queues.length === 0 ? (
           <p className="hint">Redis is unavailable, so queue statistics cannot be read.</p>
@@ -144,7 +145,7 @@ export default async function AdminPage() {
         )}
       </section>
 
-      <section className="panel" style={{ marginBottom: '1.25rem' }}>
+      <section className="panel admin-panel">
         <h2>Providers</h2>
         {providers.length === 0 ? (
           <p className="hint">
@@ -179,7 +180,7 @@ export default async function AdminPage() {
         )}
       </section>
 
-      <section className="panel" style={{ marginBottom: '1.25rem' }}>
+      <section className="panel admin-panel">
         <h2>Recent crawls</h2>
         {crawls.length === 0 ? (
           <p className="hint">No crawls recorded yet.</p>

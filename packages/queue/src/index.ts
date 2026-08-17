@@ -91,6 +91,11 @@ const DEFAULT_QUEUE_OPTIONS: Omit<QueueOptions, 'connection'> = {
   },
 };
 
+/** BullMQ 5 reserves `:` for its Redis key format and rejects it in custom IDs. */
+export function normalizeJobId(jobId: string): string {
+  return encodeURIComponent(jobId);
+}
+
 export function getQueue<T extends QueueName>(name: T): Queue<JobPayloads[T]> {
   const existing = queues.get(name);
   if (existing) return existing as Queue<JobPayloads[T]>;
@@ -112,7 +117,7 @@ export async function enqueue<T extends QueueName>(
   // queue's own name here, so a widening cast keeps the public API simple.
   const queue = getQueue(name) as unknown as Queue;
   const job = await queue.add(name, payload, {
-    ...(options.jobId ? { jobId: options.jobId } : {}),
+    ...(options.jobId ? { jobId: normalizeJobId(options.jobId) } : {}),
     ...(options.delayMs ? { delay: options.delayMs } : {}),
     ...(options.priority ? { priority: options.priority } : {}),
   });

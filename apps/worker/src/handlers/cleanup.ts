@@ -5,7 +5,13 @@ import {
   findJobsMissingEmbedding,
 } from '@ejc/database';
 import { isEmbeddingEnabled } from '@ejc/ai';
-import { createWorker, enqueue, getQueue, type WorkerHandle } from '@ejc/queue';
+import {
+  createWorker,
+  enqueue,
+  getQueue,
+  normalizeJobId,
+  type WorkerHandle,
+} from '@ejc/queue';
 import { getConfig, getLogger } from '@ejc/shared';
 
 import { enqueueDueVerifications } from './verification';
@@ -105,24 +111,24 @@ export async function scheduleMaintenance(): Promise<void> {
     await queue.add(
       'cleanup',
       { task: 'expired-caches' },
-      { repeat: { every: 6 * 60 * 60 * 1000 }, jobId: 'maintenance:caches' },
+      { repeat: { every: 6 * 60 * 60 * 1000 }, jobId: normalizeJobId('maintenance:caches') },
     );
     await queue.add(
       'cleanup',
       { task: 'expired-searches' },
-      { repeat: { every: 24 * 60 * 60 * 1000 }, jobId: 'maintenance:searches' },
+      { repeat: { every: 24 * 60 * 60 * 1000 }, jobId: normalizeJobId('maintenance:searches') },
     );
     await queue.add(
       'cleanup',
       { task: 'backfill-embeddings' },
-      { repeat: { every: 30 * 60 * 1000 }, jobId: 'maintenance:embeddings' },
+      { repeat: { every: 30 * 60 * 1000 }, jobId: normalizeJobId('maintenance:embeddings') },
     );
     await queue.add(
       'cleanup',
       { task: 'stale-jobs' },
       {
         repeat: { every: Math.max(1, config.retention.recrawlJobHours) * 60 * 60 * 1000 },
-        jobId: 'maintenance:verification',
+        jobId: normalizeJobId('maintenance:verification'),
       },
     );
 

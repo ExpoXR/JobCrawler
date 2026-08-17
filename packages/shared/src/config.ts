@@ -27,6 +27,11 @@ const csv = z
       .filter(Boolean),
   );
 
+const csvValues = z
+  .string()
+  .default('')
+  .transform((value) => value.split(',').map((entry) => entry.trim()).filter(Boolean));
+
 export const AI_PROVIDERS = ['none', 'openai', 'anthropic', 'gemini', 'ollama'] as const;
 export const EMBEDDING_PROVIDERS = ['none', 'openai', 'ollama'] as const;
 
@@ -50,10 +55,11 @@ const envSchema = z.object({
   GEOCODING_PROVIDER: z.string().default('nominatim'),
   NOMINATIM_BASE_URL: z.string().default('https://nominatim.openstreetmap.org'),
   OVERPASS_BASE_URL: z.string().default('https://overpass-api.de/api/interpreter'),
+  OVERPASS_FALLBACK_URLS: csvValues,
 
   CRAWLER_USER_AGENT: z
     .string()
-    .default('ExpoJobCrawler/0.1 (+https://github.com/ExpoXR/ExpoJobCrawler)'),
+    .default('ExpoXR-Research/0.1 (+https://github.com/ExpoXR/ExpoJobCrawler)'),
   CRAWLER_CONTACT_EMAIL: z.string().default(''),
 
   CRAWL_MAX_DOMAINS_PER_SEARCH: intFromEnv(25, 1, 500),
@@ -107,6 +113,7 @@ export interface AppConfig {
     provider: string;
     nominatimBaseUrl: string;
     overpassBaseUrl: string;
+    overpassFallbackUrls: string[];
   };
   crawler: {
     userAgent: string;
@@ -182,6 +189,7 @@ export function loadConfig(
       provider: env.GEOCODING_PROVIDER,
       nominatimBaseUrl: env.NOMINATIM_BASE_URL.replace(/\/+$/, ''),
       overpassBaseUrl: env.OVERPASS_BASE_URL,
+      overpassFallbackUrls: env.OVERPASS_FALLBACK_URLS,
     },
     crawler: {
       userAgent: env.CRAWLER_USER_AGENT,

@@ -35,7 +35,7 @@ function safeEquals(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const expectedUser = process.env['ADMIN_USERNAME'] ?? 'admin';
   const expectedPassword = process.env['ADMIN_PASSWORD'] ?? '';
 

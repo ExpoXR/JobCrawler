@@ -82,7 +82,7 @@ export function FilterPanel({ query, onChange, onSubmit, busy, disabled }: Filte
           max={250}
           step={5}
           value={query.radiusKm}
-          style={{ width: '100%' }}
+          className="range-control"
           onChange={(event) => patch({ radiusKm: Number(event.target.value) })}
         />
       </div>
@@ -121,15 +121,8 @@ export function FilterPanel({ query, onChange, onSubmit, busy, disabled }: Filte
         />
       </div>
 
-      <fieldset className="field" style={{ border: 0, padding: 0, margin: '0 0 0.9rem' }}>
-        <legend
-          style={{
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            padding: 0,
-          }}
-        >
+      <fieldset className="field fieldset-reset">
+        <legend>
           Work model
         </legend>
         {WORK_MODELS.map((entry) => (
@@ -145,15 +138,8 @@ export function FilterPanel({ query, onChange, onSubmit, busy, disabled }: Filte
       </fieldset>
 
       {!isCandidateMode ? (
-        <fieldset className="field" style={{ border: 0, padding: 0, margin: '0 0 0.9rem' }}>
-          <legend
-            style={{
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              color: 'var(--text-muted)',
-              padding: 0,
-            }}
-          >
+        <fieldset className="field fieldset-reset">
+          <legend>
             Employment type
           </legend>
           {EMPLOYMENT_TYPES.map((entry) => (
@@ -255,7 +241,7 @@ export function FilterPanel({ query, onChange, onSubmit, busy, disabled }: Filte
           max={95}
           step={5}
           value={query.minMatchScore}
-          style={{ width: '100%' }}
+          className="range-control"
           onChange={(event) => patch({ minMatchScore: Number(event.target.value) })}
         />
       </div>
@@ -275,7 +261,7 @@ export function FilterPanel({ query, onChange, onSubmit, busy, disabled }: Filte
         className="button full"
         type="submit"
         disabled={busy || disabled || !query.locationText.trim()}
-        style={{ marginTop: '1rem' }}
+        data-search-submit
       >
         {busy ? 'Searching…' : 'Search'}
       </button>

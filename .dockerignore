@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+.next
+**/.next
+node_modules
+**/node_modules
+coverage
+test-results
+playwright-report
+*.tsbuildinfo
+npm-debug.log*
+.codex
+.claude

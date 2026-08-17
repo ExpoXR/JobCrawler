@@ -153,7 +153,7 @@ export function ResultCard({ item, selected, onSelect }: ResultCardProps) {
           </ul>
         ) : null}
 
-        <div className="result-meta" style={{ marginTop: '0.5rem' }}>
+        <div className="result-meta result-source-meta">
           {sourceHost ? <span>Source: {sourceHost}</span> : null}
           {lastVerified ? <span>Verified {lastVerified}</span> : null}
           {item.job?.applicationUrl ? (

@@ -47,11 +47,16 @@ export function handleRouteError(error: unknown, route: string): NextResponse<Ap
           : error.type === 'rate_limited'
             ? 429
             : error.type === 'provider_unavailable'
-              ? 502
+              ? 503
               : 500;
 
     logger.warn('Request failed', { route, errorType: error.type, message: error.message });
-    return jsonError(status, publicErrorMessage(error), { type: error.type });
+    const message =
+      error.type === 'provider_unavailable' &&
+      (route.includes('/api/search') || route.includes('/api/geocode'))
+        ? 'Geocoding is temporarily unavailable. Please try again after the service is ready.'
+        : publicErrorMessage(error);
+    return jsonError(status, message, { type: error.type });
   }
 
   logger.error('Unhandled route error', {

@@ -203,16 +203,22 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
 
   return (
     <div className="search-layout">
-      <FilterPanel
-        query={query}
-        onChange={setQuery}
-        onSubmit={() => void runSearch()}
-        busy={busy}
-      />
+      <details className="filter-disclosure" open>
+        <summary>
+          Search filters
+          <span>{query.locationText || 'Choose location'}</span>
+        </summary>
+        <FilterPanel
+          query={query}
+          onChange={setQuery}
+          onSubmit={() => void runSearch()}
+          busy={busy}
+        />
+      </details>
 
       <section aria-label="Results">
-        <div className="panel" style={{ marginBottom: '0.75rem' }}>
-          <div className="field" style={{ marginBottom: '0.5rem' }}>
+        <div className="panel query-panel">
+          <div className="field query-field">
             <label htmlFor="nl-query">
               {mode === 'candidates'
                 ? 'Describe the role, or paste a job description'
@@ -258,7 +264,7 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
               <span style={{ width: `${progress.percent}%` }} />
             </div>
             {progress.errors.length > 0 ? (
-              <p className="hint" style={{ marginTop: '0.4rem' }}>
+              <p className="hint progress-errors">
                 Some sources were unavailable: {progress.errors.slice(0, 3).join(', ')}
               </p>
             ) : null}
@@ -266,7 +272,7 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
         ) : null}
 
         {visibleResults.length > 0 ? (
-          <div className="result-meta" style={{ marginBottom: '0.5rem' }}>
+          <div className="result-meta result-summary">
             <strong>{visibleResults.length} results</strong>
             {jobCount > 0 ? <span>{jobCount} vacancies</span> : null}
             {potentialCount > 0 ? <span>{potentialCount} potential employers</span> : null}

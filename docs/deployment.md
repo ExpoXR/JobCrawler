@@ -1,6 +1,6 @@
 # Deployment
 
-Two application processes (`web`, `worker`) plus PostgreSQL and Redis.
+Two application processes (`web`, `worker`) plus PostgreSQL, Redis, and an internal DACH Nominatim service.
 
 ## Docker Compose
 
@@ -11,9 +11,10 @@ cp .env.example .env
 
 docker compose up -d --build
 docker compose run --rm migrate
+docker compose -f docker-compose.nominatim.yml up -d
 ```
 
-Only `web` publishes a port. Postgres and Redis stay on the internal network.
+Only `web` publishes a loopback port. Postgres, Redis, and Nominatim stay on the shared Docker network.
 
 | Service | Image | Notes |
 | --- | --- | --- |
@@ -22,6 +23,37 @@ Only `web` publishes a port. Postgres and Redis stay on the internal network.
 | `web` | `docker/web/Dockerfile` | Next.js standalone output, non-root |
 | `worker` | `docker/worker/Dockerfile` | runs TypeScript via `tsx`, non-root |
 | `migrate` | same image as worker | one-shot, `profiles: [tools]` |
+| `nominatim` | pinned `mediagis/nominatim:5.3` digest | DACH import and continuous Geofabrik replication; separate Compose file |
+
+## DACH Nominatim
+
+Create the persistent dataset before the first import:
+
+```bash
+zfs create -o mountpoint=/apps/docker/expoxr/jobcrawler-nominatim \
+  -o compression=zstd -o atime=off -o refquota=180G \
+  apps/docker/expoxr/jobcrawler-nominatim
+mkdir -p /mnt/apps/docker/expoxr/jobcrawler-nominatim/{postgres,flatnode}
+docker compose -f docker-compose.nominatim.yml up -d
+```
+
+TrueNAS applies the pool altroot, so the ZFS property is `/apps/...` while the
+host-visible path used by Compose is `/mnt/apps/...`.
+
+The initial Geofabrik DACH import can take hours. Watch it with
+`docker logs -f expojobcrawler-nominatim`; readiness is `GET /status`. Daily
+diffs are applied continuously from the DACH replication endpoint. No host port
+is published.
+
+For a clean rebuild, stop the service, snapshot or move the existing dataset,
+create an empty dataset with the properties above, and start the service. Do
+not delete the old dataset until `/status`, a forward geocode, and replication
+state have been verified.
+
+Interactive map tiles remain browser-fetched from the configured
+`NEXT_PUBLIC_MAP_TILE_URL`. Keep visible OpenStreetMap attribution, cache tiles
+in the browser, and configure another policy-compliant provider before traffic
+outgrows the public tile service.
 
 Scale crawling with `docker compose up -d --scale worker=3`. Workers are
 stateless and coordinate through Redis.
@@ -62,7 +94,7 @@ live:
 | `ADMIN_PASSWORD` | Admin area returns 503 until set |
 | `CRAWLER_USER_AGENT`, `CRAWLER_CONTACT_EMAIL` | Required by the OSM usage policy and basic crawling etiquette |
 | `NOMINATIM_BASE_URL` | Self-host for anything beyond light use |
-| `OVERPASS_BASE_URL` | Same — the public instance is shared and rate limited |
+| `OVERPASS_BASE_URL`, `OVERPASS_FALLBACK_URLS` | Approved public instances are shared and rate limited; keep an identified fallback configured |
 | `CRAWL_ALLOW_PRIVATE_ADDRESSES` | Must stay `false` in production (SSRF) |
 | `CRAWL_MAX_DOMAINS_PER_SEARCH`, `CRAWL_MAX_PAGES_PER_DOMAIN` | Bound the cost of one search |
 | `WORKER_CONCURRENCY` | Crawling is I/O bound; 4–8 per worker is reasonable |
@@ -72,9 +104,10 @@ every value at startup, so a typo fails fast instead of silently defaulting.
 
 ## Health and monitoring
 
-`GET /api/health` returns 200 when Postgres is reachable with both extensions
-installed, 503 otherwise, and reports Redis and provider status. Both containers
-carry Docker healthchecks.
+`GET /api/health` returns 200 when Postgres, required extensions, and cached
+Nominatim readiness pass; it returns 503 with a clear geocoding degraded state
+otherwise. Redis and provider status are also reported. Runtime containers
+carry explicit health checks.
 
 Logs are one JSON object per line with `searchId`, `provider`, `domain`,
 `status`, `durationMs`, `retryCount` and `errorType` where relevant — ready to
@@ -94,7 +127,6 @@ docker compose exec -T postgres pg_dump -U expojobcrawler expojobcrawler | gzip 
 
 ## Resource guidance
 
-A small deployment (one worker, light traffic) runs comfortably in ~2 GB RAM.
-Postgres dominates as the index grows; the HNSW vector indexes are the memory
-hungry part, so size for the corpus you expect rather than the one you start
-with.
+The application stack is bounded to roughly 2.5 GB. The initial DACH Nominatim
+import is separately bounded to 24 GB RAM and 8 CPUs; its persistent dataset has
+a 180 GB quota. Monitor pool free space throughout imports and rebuilds.

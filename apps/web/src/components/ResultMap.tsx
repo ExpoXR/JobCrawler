@@ -1,7 +1,7 @@
 'use client';
 
 import type { GeoPoint, SearchResultItem } from '@ejc/shared';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 /**
  * OpenStreetMap result map (plan sections 26 and 27).
@@ -30,6 +30,9 @@ interface MarkerModel {
   label: string;
 }
 
+const MAP_TILE_URL =
+  process.env.NEXT_PUBLIC_MAP_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
 function pointOf(item: SearchResultItem): GeoPoint | undefined {
   return item.job?.coordinates ?? item.company?.location ?? item.candidate?.coordinates;
 }
@@ -41,9 +44,9 @@ function labelOf(item: SearchResultItem): string {
 }
 
 function colorFor(score: number): string {
-  if (score >= 75) return '#0d7a4a';
-  if (score >= 50) return '#9a5b00';
-  return '#5b6472';
+  if (score >= 75) return 'var(--ex-success)';
+  if (score >= 50) return 'var(--ex-warning)';
+  return 'var(--ex-muted)';
 }
 
 /** Builds the marker element: shape by kind, colour by match band. */
@@ -77,6 +80,7 @@ export function ResultMap({ center, radiusKm, items, selectedId, onSelect }: Res
   const mapRef = useRef<unknown>(null);
   const markersRef = useRef<Array<{ remove: () => void }>>([]);
   const failedRef = useRef(false);
+  const [mapFailed, setMapFailed] = useState(false);
 
   const markers = useMemo<MarkerModel[]>(
     () =>
@@ -114,7 +118,7 @@ export function ResultMap({ center, radiusKm, items, selectedId, onSelect }: Res
             sources: {
               osm: {
                 type: 'raster',
-                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                tiles: [MAP_TILE_URL],
                 tileSize: 256,
                 attribution: '© OpenStreetMap contributors',
                 maxzoom: 19,
@@ -129,11 +133,13 @@ export function ResultMap({ center, radiusKm, items, selectedId, onSelect }: Res
 
         map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
         map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
+        map.on('error', () => setMapFailed(true));
         mapRef.current = map;
       } catch {
         // No WebGL, blocked tiles, or an offline deployment: fall back to the
         // list-only view rather than breaking the page.
         failedRef.current = true;
+        setMapFailed(true);
       }
     })();
 
@@ -165,7 +171,7 @@ export function ResultMap({ center, radiusKm, items, selectedId, onSelect }: Res
           onSelect(marker.id);
         });
         if (marker.id === selectedId) {
-          element.style.outline = '3px solid #1f5eff';
+          element.style.outline = '3px solid var(--ex-accent)';
           element.style.outlineOffset = '2px';
         }
 
@@ -195,8 +201,12 @@ export function ResultMap({ center, radiusKm, items, selectedId, onSelect }: Res
 
   return (
     <div>
-      <div className="map-container" ref={containerRef} role="application" aria-label="Result map">
-        {markers.length === 0 ? (
+      <div className="map-container" ref={containerRef} role="region" aria-label="Result map">
+        {mapFailed ? (
+          <div className="map-fallback map-fallback--error" role="status">
+            The interactive map is unavailable. All results remain available in the list.
+          </div>
+        ) : markers.length === 0 ? (
           <div className="map-fallback">
             No mappable results yet. Results without coordinates still appear in the list.
           </div>

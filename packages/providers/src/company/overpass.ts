@@ -1,4 +1,4 @@
-import { AppError, boundingBox, getConfig, getLogger, type GeoPoint } from '@ejc/shared';
+import { AppError, getConfig, getLogger, type GeoPoint } from '@ejc/shared';
 
 import type {
   CompanyProvider,
@@ -115,11 +115,9 @@ export class OverpassProvider implements CompanyProvider {
   /** Builds an Overpass QL query bounded by radius and result count. */
   buildQuery(center: GeoPoint, radiusKm: number, limit: number): string {
     const radiusMeters = Math.round(Math.min(radiusKm, 100) * 1000);
-    const box = boundingBox(center, Math.min(radiusKm, 100));
-    const bbox = `${box.minLat.toFixed(5)},${box.minLon.toFixed(5)},${box.maxLat.toFixed(5)},${box.maxLon.toFixed(5)}`;
 
     const clauses = EMPLOYER_FILTERS.map(
-      (filter) => `  ${filter}(around:${radiusMeters},${center.lat},${center.lon})(${bbox});`,
+      (filter) => `  ${filter}(around:${radiusMeters},${center.lat},${center.lon});`,
     ).join('\n');
 
     return [
@@ -139,42 +137,63 @@ export class OverpassProvider implements CompanyProvider {
     const limit = Math.min(query.limit ?? 200, 500);
     const body = this.buildQuery(query.center, query.radiusKm, limit);
 
-    const controller = new AbortController();
-    // Overpass is slow by nature; give it more headroom than a page fetch.
-    const timer = setTimeout(() => controller.abort(), Math.max(config.crawler.timeoutMs, 60_000));
-    const onAbort = () => controller.abort();
-    context.signal?.addEventListener('abort', onAbort, { once: true });
+    const endpoints = Array.from(
+      new Set([config.geo.overpassBaseUrl, ...config.geo.overpassFallbackUrls]),
+    ).filter(Boolean);
+    let payload: OverpassResponse | undefined;
+    let lastError: AppError | undefined;
 
-    let payload: OverpassResponse;
-    try {
-      const response = await fetch(config.geo.overpassBaseUrl, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'content-type': 'application/x-www-form-urlencoded',
-          'user-agent': config.crawler.userAgent,
-          accept: 'application/json',
-        },
-        body: new URLSearchParams({ data: body }).toString(),
-      });
+    for (const endpoint of endpoints) {
+      const controller = new AbortController();
+      // Overpass is slow by nature; give each approved endpoint more headroom
+      // than a normal page fetch before trying the next one.
+      const timer = setTimeout(
+        () => controller.abort(),
+        Math.max(config.crawler.timeoutMs, 60_000),
+      );
+      const onAbort = () => controller.abort();
+      context.signal?.addEventListener('abort', onAbort, { once: true });
 
-      if (!response.ok) {
-        throw new AppError(
-          response.status === 429 || response.status === 504
-            ? 'rate_limited'
-            : 'provider_unavailable',
-          `Overpass returned ${response.status}`,
-          { context: { provider: this.info.key, status: response.status } },
-        );
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'content-type': 'application/x-www-form-urlencoded',
+            'user-agent': config.crawler.userAgent,
+            accept: 'application/json',
+          },
+          body: new URLSearchParams({ data: body }).toString(),
+        });
+
+        if (!response.ok) {
+          lastError = new AppError(
+            response.status === 429 || response.status === 504
+              ? 'rate_limited'
+              : 'provider_unavailable',
+            `Overpass returned ${response.status}`,
+            { context: { provider: this.info.key, status: response.status } },
+          );
+          continue;
+        }
+
+        payload = (await response.json()) as OverpassResponse;
+        break;
+      } catch (error) {
+        lastError =
+          error instanceof AppError
+            ? error
+            : new AppError('provider_unavailable', 'Overpass request failed', { cause: error });
+      } finally {
+        clearTimeout(timer);
+        context.signal?.removeEventListener('abort', onAbort);
       }
 
-      payload = (await response.json()) as OverpassResponse;
-    } catch (error) {
-      if (error instanceof AppError) throw error;
-      throw new AppError('provider_unavailable', 'Overpass request failed', { cause: error });
-    } finally {
-      clearTimeout(timer);
-      context.signal?.removeEventListener('abort', onAbort);
+      if (context.signal?.aborted) break;
+    }
+
+    if (!payload) {
+      throw lastError ?? new AppError('provider_unavailable', 'No Overpass endpoint configured');
     }
 
     const companies: DiscoveredCompany[] = [];

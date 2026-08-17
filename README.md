@@ -1,6 +1,6 @@
 # ExpoJobCrawler
 
-A self-hosted, AI-powered **geographic employment research engine** for Europe.
+A self-hosted, AI-powered **geographic employment research engine** launching in the DACH region.
 
 It works in two directions and needs no account in either:
 
@@ -44,6 +44,7 @@ cp .env.example .env
 
 docker compose up -d --build
 docker compose run --rm migrate     # apply database migrations
+docker compose -f docker-compose.nominatim.yml up -d
 ```
 
 Open <http://localhost:3000>.
@@ -83,6 +84,7 @@ that live discovery is unavailable, rather than failing.
 | `npm run lint` | ESLint |
 | `npm test` | Vitest |
 | `npm run check` | typecheck + lint + test |
+| `npm run test:e2e` | Playwright accessibility and responsive checks |
 
 ---
 

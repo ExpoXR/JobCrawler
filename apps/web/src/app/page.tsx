@@ -8,10 +8,11 @@ export default function HomePage() {
   return (
     <div className="container">
       <section className="hero">
-        <h1>ExpoJobCrawler</h1>
+        <p className="ex-kicker">DACH employment intelligence</p>
+        <h1>Employment research, mapped.</h1>
         <p className="lede">
-          A geographic employment research engine. It searches the open web around a place —
-          company websites, career pages and public profiles — not just job boards.
+          ExpoJobCrawler searches the open web around a place — company websites, career pages
+          and public profiles — beginning with Germany, Austria and Switzerland.
         </p>
 
         <div className="mode-choice">
@@ -33,7 +34,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="container" style={{ maxWidth: 720, paddingTop: 0 }}>
+      <section className="home-how">
         <h2>How it works</h2>
         <ol>
           <li>Your location is geocoded against OpenStreetMap.</li>
@@ -47,7 +48,7 @@ export default function HomePage() {
             score is explained with the evidence behind it.
           </li>
         </ol>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+        <p className="home-trust-note">
           The crawler respects <code>robots.txt</code>, crawl delays and rate limits, and never
           attempts to bypass access controls. Only publicly available professional information is
           indexed.

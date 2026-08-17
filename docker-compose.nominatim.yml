@@ -1,0 +1,53 @@
+name: expojobcrawler-geocoding
+
+services:
+  nominatim:
+    image: expojobcrawler-nominatim:5.3.2
+    build:
+      context: .
+      dockerfile: docker/nominatim/Dockerfile
+    container_name: expojobcrawler-nominatim
+    restart: unless-stopped
+    shm_size: 8gb
+    mem_limit: 24g
+    cpus: 8
+    pids_limit: 2048
+    environment:
+      PBF_URL: https://download.geofabrik.de/europe/dach-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/europe/dach-updates/
+      UPDATE_MODE: continuous
+      REPLICATION_UPDATE_INTERVAL: 86400
+      REPLICATION_RECHECK_INTERVAL: 900
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:?NOMINATIM_PASSWORD must be set}
+      THREADS: 8
+      GUNICORN_WORKERS: 4
+      IMPORT_STYLE: address
+      IMPORT_WIKIPEDIA: 'false'
+      WARMUP_ON_STARTUP: 'false'
+      POSTGRES_SHARED_BUFFERS: 2GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 4GB
+      POSTGRES_AUTOVACUUM_WORK_MEM: 1GB
+      POSTGRES_WORK_MEM: 32MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 16GB
+      POSTGRES_MAX_WAL_SIZE: 4GB
+      POSTGRES_MAX_CONNECTIONS: 80
+    volumes:
+      - /mnt/apps/docker/expoxr/jobcrawler-nominatim/postgres:/var/lib/postgresql/16/main
+      - /mnt/apps/docker/expoxr/jobcrawler-nominatim/flatnode:/nominatim/flatnode
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://127.0.0.1:8080/status >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 8h
+    networks:
+      internal:
+        aliases: [nominatim]
+    logging:
+      driver: json-file
+      options: {max-size: 20m, max-file: '5'}
+
+networks:
+  internal:
+    external: true
+    name: expojobcrawler-internal

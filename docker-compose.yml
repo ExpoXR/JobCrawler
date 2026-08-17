@@ -16,6 +16,23 @@ services:
       context: .
       dockerfile: docker/postgres/Dockerfile
     restart: unless-stopped
+    user: postgres
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    shm_size: 512mb
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_connections=80
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-expojobcrawler}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -32,11 +49,20 @@ services:
       retries: 10
       start_period: 20s
     networks: [internal]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
 
   redis:
-    image: redis:7-alpine
+    image: redis@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     restart: unless-stopped
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    user: redis
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '192mb', '--maxmemory-policy', 'noeviction']
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 128
     volumes:
       - redisdata:/data
     healthcheck:
@@ -45,6 +71,9 @@ services:
       timeout: 5s
       retries: 10
     networks: [internal]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
 
   # One-shot migration runner. Not started by `up`; invoke it explicitly.
   migrate:
@@ -55,7 +84,11 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
       MIGRATIONS_DIR: /app/migrations
-    command: ['npx', 'tsx', 'packages/database/src/cli/migrate.ts']
+    command: ['node_modules/.bin/tsx', 'packages/database/src/cli/migrate.ts']
+    mem_limit: 512m
+    pids_limit: 256
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,7 +98,16 @@ services:
     build:
       context: .
       dockerfile: docker/web/Dockerfile
+      args:
+        NEXT_PUBLIC_MAP_TILE_URL: ${NEXT_PUBLIC_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+        PUBLIC_ROBOTS_NOINDEX: ${PUBLIC_ROBOTS_NOINDEX:-true}
     restart: unless-stopped
+    init: true
+    mem_limit: 512m
+    cpus: 2
+    pids_limit: 256
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     env_file:
       - path: .env
         required: false
@@ -73,6 +115,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
       REDIS_URL: redis://redis:6379
+      NOMINATIM_BASE_URL: http://nominatim:8080
+      NODE_OPTIONS: --max-old-space-size=320
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -84,12 +128,21 @@ services:
       redis:
         condition: service_healthy
     networks: [internal]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
 
   worker:
     build:
       context: .
       dockerfile: docker/worker/Dockerfile
     restart: unless-stopped
+    init: true
+    mem_limit: 768m
+    cpus: 2
+    pids_limit: 512
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     env_file:
       - path: .env
         required: false
@@ -97,6 +150,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
       REDIS_URL: redis://redis:6379
+      NOMINATIM_BASE_URL: http://nominatim:8080
+      NODE_OPTIONS: --max-old-space-size=512
       MIGRATIONS_DIR: /app/migrations
     depends_on:
       postgres:
@@ -107,6 +162,9 @@ services:
     deploy:
       replicas: 1
     networks: [internal]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
 
 volumes:
   pgdata:
@@ -115,3 +173,4 @@ volumes:
 networks:
   internal:
     driver: bridge
+    name: expojobcrawler-internal

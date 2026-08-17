@@ -21,12 +21,17 @@ describe('loadConfig', () => {
       CRAWL_ALLOW_PRIVATE_ADDRESSES: 'true',
       CRAWL_MAX_PAGES_PER_DOMAIN: '7',
       CRAWL_BLOCKED_DOMAINS: 'Example.com, spam.test ',
+      OVERPASS_FALLBACK_URLS: 'https://one.example/api, https://two.example/api ',
     });
 
     expect(config.crawler.respectRobots).toBe(false);
     expect(config.crawler.allowPrivateAddresses).toBe(true);
     expect(config.crawler.maxPagesPerDomain).toBe(7);
     expect(config.crawler.blockedDomains).toEqual(['example.com', 'spam.test']);
+    expect(config.geo.overpassFallbackUrls).toEqual([
+      'https://one.example/api',
+      'https://two.example/api',
+    ]);
   });
 
   it('enables the admin area only when a password is set', () => {
