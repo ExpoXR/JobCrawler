@@ -73,7 +73,7 @@ export function registerCleanupWorkers(): WorkerHandle[] {
 export async function backfillEmbeddings(
   limit = 200,
 ): Promise<{ jobs: number; companies: number }> {
-  if (!isEmbeddingEnabled()) return { jobs: 0, companies: 0 };
+  if (!(await isEmbeddingEnabled())) return { jobs: 0, companies: 0 };
 
   const [jobs, companies] = await Promise.all([
     findJobsMissingEmbedding(limit),

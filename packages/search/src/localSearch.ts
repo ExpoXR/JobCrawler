@@ -50,7 +50,7 @@ export async function searchLocalIndex(
 
   // A query embedding is only computed when embeddings are configured; without
   // it the matcher simply omits the semantic component.
-  const queryEmbedding = isEmbeddingEnabled()
+  const queryEmbedding = (await isEmbeddingEnabled())
     ? await embedText(
         buildQueryEmbeddingText(query),
         options.signal ? { signal: options.signal } : {},

@@ -200,7 +200,7 @@ export function ResultMap({ center, radiusKm, items, selectedId, onSelect }: Res
   }, [center.lat, center.lon]);
 
   return (
-    <div>
+    <div className="map-shell">
       <div className="map-container" ref={containerRef} role="region" aria-label="Result map">
         {mapFailed ? (
           <div className="map-fallback map-fallback--error" role="status">

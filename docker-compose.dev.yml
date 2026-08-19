@@ -1,0 +1,34 @@
+# Development toolchain — runs npm without Node installed on the host.
+#
+#   docker compose -f docker-compose.dev.yml build tools
+#   docker compose -f docker-compose.dev.yml run --rm --user "$(id -u):$(id -g)" tools npm ci
+#   docker compose -f docker-compose.dev.yml run --rm --user "$(id -u):$(id -g)" tools npm run check
+#
+# Pass --user explicitly: bash makes UID readonly, so `export UID` does not
+# work and the compose default would leave root-owned files in your tree.
+#
+# `tools` is a one-shot container: it mounts the working tree, runs the command
+# you give it, and exits. It is not part of the deployed stack.
+#
+# Nothing here joins the application network, because none of the commands it
+# exists for — install, typecheck, lint, test, build — touch Postgres or Redis.
+# Migrations have their own one-shot service in docker-compose.yml:
+#
+#   docker compose run --rm migrate
+
+name: expojobcrawler-dev
+
+services:
+  tools:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+    # Overridden per invocation with --user "$(id -u):$(id -g)" so files
+    # written into the bind mount stay yours. See the header.
+    user: '${UID:-1000}:${GID:-1000}'
+    working_dir: /app
+    volumes:
+      - .:/app
+    # An interactive shell when invoked with no command.
+    stdin_open: true
+    tty: true

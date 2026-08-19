@@ -10,7 +10,15 @@ import { scoreJob, scorePotentialEmployer } from '@ejc/matching';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { clientKey, handleRouteError, jsonError, rateLimit, readJsonBody, tooManyRequests } from '@/lib/api';
+import {
+  assertSameOrigin,
+  clientKey,
+  handleRouteError,
+  jsonError,
+  rateLimit,
+  readJsonBody,
+  tooManyRequests,
+} from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,8 +51,10 @@ function fallbackQuery(locationText: string): SearchQuery {
 
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
+
     // Research can call a paid provider, so it is the most tightly limited route.
-    const limit = rateLimit(clientKey(request, 'research'), 6, 60_000);
+    const limit = await rateLimit(clientKey(request, 'research'), 6, 60_000);
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
 
     const body = requestSchema.parse(await readJsonBody(request));

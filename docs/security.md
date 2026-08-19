@@ -41,8 +41,12 @@ Covered by 18 tests in `packages/crawler/src/ssrf.test.ts`.
 
 **XSS** — scraped HTML is never re-emitted as markup. Descriptions are stored as
 plain text (`sanitizeScrapedText` strips control characters) and rendered as
-text nodes by React, which escapes by default. `dangerouslySetInnerHTML` appears
-nowhere in the codebase.
+text nodes by React, which escapes by default.
+
+`dangerouslySetInnerHTML` is used in exactly one place: the anti-FOUC theme
+script in `apps/web/src/app/layout.tsx`, whose content is a compile-time
+constant with no interpolation of any kind. It carries the CSP nonce. If a
+second use ever appears, that is worth a hard look.
 
 **XML** — `fast-xml-parser` runs with `processEntities: false`, so entity
 expansion and external entity references are inert.
@@ -59,10 +63,73 @@ spreadsheet.
 - Per-request timeouts and bounded redirect chains
 - Page, domain and sitemap-entry budgets per search
 - Bounded worker concurrency; queue jobs capped at 3 attempts with exponential backoff
-- Request-body size limit on API routes
-- Per-IP fixed-window rate limits on `/api/search`, `/api/geocode`, `/api/parse`
-  and `/api/export` (in-memory, therefore per instance — front a multi-instance
-  deployment with a shared limiter)
+- Request-body size limit on API routes (256 KB, checked against
+  `content-length` before the body is buffered)
+- Server-side `statement_timeout` (30 s) and
+  `idle_in_transaction_session_timeout` (60 s), so one pathological query cannot
+  hold a pooled connection against everyone else
+- Per-client fixed-window rate limits on **every** API route, including the SSE
+  progress stream — each of those holds a connection for up to ten minutes, so
+  opening them is the cheap half of an exhaustion attack
+
+### Rate limiting
+
+Backed by Redis (`apps/web/src/lib/rateLimit.ts`), which the deployment already
+runs for queues, so a limit means the same thing across every web instance and
+survives a restart. When Redis is unreachable it falls back to the in-memory
+limiter and backs off for 30 seconds before trying again — it degrades, it does
+not fail open.
+
+**`TRUSTED_PROXY_HOPS` must match your deployment.** `x-forwarded-for` is
+appended to by every hop and the *client* controls the leftmost entry, so
+trusting that entry makes every limit bypassable by sending a random address.
+The limiter counts the configured number of hops from the right; `0` ignores the
+header entirely. Too high and it reads a spoofed value; too low and every client
+shares one bucket.
+
+## Browser security headers
+
+Static headers come from `apps/web/next.config.ts`; the Content-Security-Policy
+is built per request in `apps/web/src/lib/csp.ts` and set by
+`apps/web/src/proxy.ts`, because it carries a nonce.
+
+| Header | Value |
+| --- | --- |
+| `Content-Security-Policy` | see below |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `geolocation=(self)`, everything else denied |
+| `Cross-Origin-Opener-Policy` | `same-origin` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `Strict-Transport-Security` | one year, only when `PUBLIC_BASE_URL` is https |
+
+The policy uses a per-request nonce with `'strict-dynamic'`: only scripts this
+server marked, and scripts those load, may run — the host allowlist is ignored,
+so a permissive CDN entry cannot undermine it. `script-src` never contains
+`'unsafe-inline'`. `style-src` does, because MapLibre and Next both inject style
+elements that cannot carry a nonce; that is the one loose directive.
+`object-src`, `base-uri`, `frame-src` and `frame-ancestors` are `'none'`, and
+`form-action` is `'self'`.
+
+**`CSP_MODE` ships as `report-only`, which enforces nothing.** A policy mistake
+takes an application down silently, so the default observes instead. Load every
+page, confirm the browser console reports no violations, then set
+`CSP_MODE=enforce`. Until you do, the policy is documentation.
+
+## Cross-site request forgery
+
+Session cookies are `SameSite=Lax`, which stops the classic cross-site form
+post. On top of that, every state-changing route calls `assertSameOrigin`, which
+rejects a request whose `Origin` is neither the configured `PUBLIC_BASE_URL` nor
+the request's own origin. Requests with no `Origin` at all are allowed through —
+curl and native clients send none, and CSRF requires a browser to begin with.
+
+## Queue payloads
+
+A job payload round-trips through Redis as JSON, which makes it a trust boundary
+like an HTTP body. The discovery handlers re-validate their `SearchQuery` with
+`parseSearchQuery` on dequeue rather than trusting the shape they were given.
 
 ## Secrets
 
@@ -76,12 +143,35 @@ spreadsheet.
 
 ## Admin access
 
-`/admin` and `/api/admin/*` sit behind HTTP Basic auth in
-`apps/web/src/middleware.ts`, compared with a timing-safe function. With no
-`ADMIN_PASSWORD` set the area returns 503 — **it fails closed, not open**. Serve
-it over TLS; Basic auth is only as private as its transport.
+Accounts live in `users`, with exactly two roles: `admin` and `user`.
 
-The public application requires no account, by design.
+- **Passwords** are scrypt (N=2^15, r=8, p=1) with a 32-byte per-row salt, in
+  `apps/web/src/lib/password.ts`. Verification is `timingSafeEqual`, and a login
+  for an account that does not exist still performs a full hash comparison
+  against a dummy record, so neither the response nor its timing reveals whether
+  an email is registered.
+- **Sessions** are opaque 32-byte random tokens in an `httpOnly`, `SameSite=Lax`
+  cookie, `Secure` whenever `PUBLIC_BASE_URL` is https. The database stores only
+  their SHA-256, so a dump grants no logins. A sliding window (default 7 days)
+  is capped by an absolute one (default 30 days) that is never extended.
+  Changing a password, changing a role or deactivating an account deletes every
+  session for that user immediately — which is why these are not JWTs.
+- **The authorisation check is `requireAdmin()` in each route handler and page**,
+  on the Node runtime, against the database. `apps/web/src/proxy.ts` runs on the
+  edge runtime and can only see whether a session cookie is *present*, so it
+  redirects; it never authorises. Nothing security-relevant depends on it.
+- **The first administrator** is seeded from `ADMIN_EMAIL` / `ADMIN_PASSWORD`,
+  and only ever when the users table is empty, so it cannot overwrite an account
+  an operator has since changed. Clear `ADMIN_PASSWORD` once you have signed in.
+- **The last active administrator** cannot be demoted, deactivated or deleted;
+  the alternative is a deployment nobody can administer.
+
+Searching still requires no account. What changed is ownership: a search created
+while signed in records a `user_id`, and its results, its progress stream and its
+export are then readable only by that account or an administrator. A search
+created signed out has no owner and stays readable by anyone holding its id, as
+before. A search that does not exist and one belonging to somebody else fail
+identically, so the endpoint cannot be used to discover which ids exist.
 
 ## Error handling
 

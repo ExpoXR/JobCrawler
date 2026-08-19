@@ -2,17 +2,21 @@ import { exportSearchResults } from '@ejc/search';
 import { exportRequestSchema } from '@ejc/shared';
 
 import { clientKey, handleRouteError, rateLimit, tooManyRequests } from '@/lib/api';
+import { assertSearchAccess } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * Result export (plan section 31). No account needed; the search id is the
- * only credential, and search sessions expire on their own.
+ * Result export (plan section 31).
+ *
+ * A search run anonymously is still readable by anyone holding its id — that is
+ * how the account-free product works. A search run while signed in belongs to
+ * that account, so a shared URL no longer grants access to it.
  */
 export async function GET(request: Request) {
   try {
-    const limit = rateLimit(clientKey(request, 'export'), 10, 60_000);
+    const limit = await rateLimit(clientKey(request, 'export'), 10, 60_000);
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
 
     const url = new URL(request.url);
@@ -20,6 +24,8 @@ export async function GET(request: Request) {
       searchId: url.searchParams.get('searchId') ?? '',
       format: url.searchParams.get('format') ?? 'csv',
     });
+
+    await assertSearchAccess(parsed.searchId);
 
     const payload = await exportSearchResults(parsed.searchId, parsed.format);
 

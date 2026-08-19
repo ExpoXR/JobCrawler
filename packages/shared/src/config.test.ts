@@ -38,6 +38,19 @@ describe('loadConfig', () => {
     expect(loadConfig({ ADMIN_PASSWORD: 'secret' }).admin.enabled).toBe(true);
   });
 
+  it('defaults sessions to a sliding week inside an absolute month', () => {
+    const auth = loadConfig({}).auth;
+    expect(auth.sessionTtlHours).toBe(24 * 7);
+    expect(auth.sessionAbsoluteTtlHours).toBe(24 * 30);
+    // The sliding window is meaningless if it can outlast the hard cap.
+    expect(auth.sessionTtlHours).toBeLessThanOrEqual(auth.sessionAbsoluteTtlHours);
+  });
+
+  it('reads the bootstrap administrator address', () => {
+    expect(loadConfig({ ADMIN_EMAIL: 'ops@example.com' }).admin.email).toBe('ops@example.com');
+    expect(loadConfig({}).admin.email).toBe('');
+  });
+
   it('rejects an out-of-range value instead of silently clamping', () => {
     expect(() =>
       loadConfig({ AI_TEMPERATURE: '9' }),

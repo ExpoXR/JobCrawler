@@ -6,7 +6,7 @@ Two application processes (`web`, `worker`) plus PostgreSQL, Redis, and an inter
 
 ```bash
 cp .env.example .env
-# Required: POSTGRES_PASSWORD, ADMIN_PASSWORD
+# Required: POSTGRES_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD
 # Recommended: CRAWLER_USER_AGENT, CRAWLER_CONTACT_EMAIL, PUBLIC_BASE_URL
 
 docker compose up -d --build
@@ -91,7 +91,7 @@ live:
 | Variable | Why |
 | --- | --- |
 | `POSTGRES_PASSWORD` | Compose refuses to start without it |
-| `ADMIN_PASSWORD` | Admin area returns 503 until set |
+| `ADMIN_EMAIL` + `ADMIN_PASSWORD` | Seed the first administrator; no account exists without them |
 | `CRAWLER_USER_AGENT`, `CRAWLER_CONTACT_EMAIL` | Required by the OSM usage policy and basic crawling etiquette |
 | `NOMINATIM_BASE_URL` | Self-host for anything beyond light use |
 | `OVERPASS_BASE_URL`, `OVERPASS_FALLBACK_URLS` | Approved public instances are shared and rate limited; keep an identified fallback configured |

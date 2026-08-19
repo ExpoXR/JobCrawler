@@ -138,7 +138,7 @@ export async function embedTexts(
   texts: readonly string[],
   options: { signal?: AbortSignal } = {},
 ): Promise<EmbedTextsResult> {
-  const provider = getEmbeddingProvider();
+  const provider = await getEmbeddingProvider();
   if (!provider.configured || texts.length === 0) {
     return { vectors: texts.map(() => undefined), provider: provider.key, model: provider.model };
   }
@@ -204,6 +204,6 @@ export function similarityScore(a: readonly number[], b: readonly number[]): num
   return Math.max(0, Math.min(1, (cosineSimilarity(a, b) + 1) / 2));
 }
 
-export function isEmbeddingEnabled(): boolean {
-  return getEmbeddingProvider().configured;
+export async function isEmbeddingEnabled(): Promise<boolean> {
+  return (await getEmbeddingProvider()).configured;
 }

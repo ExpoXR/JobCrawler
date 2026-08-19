@@ -2,7 +2,7 @@
 
 A self-hosted, AI-powered **geographic employment research engine** launching in the DACH region.
 
-It works in two directions and needs no account in either:
+It works in two directions, and searching in either needs no account:
 
 - **Job seekers** enter a city, a radius and a role, and get active vacancies *plus*
   nearby companies that plausibly employ people like them.
@@ -40,7 +40,7 @@ embedding provider improves quality; it is never required.
 
 ```bash
 cp .env.example .env
-# Set at least POSTGRES_PASSWORD and ADMIN_PASSWORD.
+# Set at least POSTGRES_PASSWORD, ADMIN_EMAIL and ADMIN_PASSWORD.
 
 docker compose up -d --build
 docker compose run --rm migrate     # apply database migrations
@@ -49,8 +49,14 @@ docker compose -f docker-compose.nominatim.yml up -d
 
 Open <http://localhost:3000>.
 
-The admin dashboard is at `/admin` behind HTTP Basic auth. It is **disabled**
-(HTTP 503) until `ADMIN_PASSWORD` is set — it fails closed, not open.
+Searching needs no account. Administration does: sign in at `/login` with the
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` pair, which seeds the first administrator on a
+deployment whose users table is still empty. Change that password under
+`/admin/users`, then clear `ADMIN_PASSWORD` from the environment.
+
+A search run while signed in belongs to that account, so its results and export
+are private to it. A search run signed out stays readable by anyone holding its
+id, exactly as before.
 
 ## Quick start (local development)
 
@@ -168,5 +174,23 @@ back to lexical signals.
 - [docs/providers.md](docs/providers.md) — how to add a new source
 - [docs/crawler.md](docs/crawler.md)
 - [docs/ai.md](docs/ai.md)
+- [docs/ai-providers.md](docs/ai-providers.md) — configuring OpenAI, Claude, Gemini or a local model
 - [docs/deployment.md](docs/deployment.md)
 - [docs/security.md](docs/security.md)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the architectural
+invariants a change must not break, and the code style. Security issues go through
+[SECURITY.md](SECURITY.md), never a public issue. Changes are recorded in
+[CHANGELOG.md](CHANGELOG.md).
+
+## Licence
+
+ExpoJobCrawler is free software under the
+**[GNU Affero General Public License v3.0](LICENSE)**.
+
+You may run, study, modify and redistribute it. The AGPL's network clause is the reason
+for this choice: if you run a modified version as a network service, you must offer its
+source to the people who use it. Self-hosting it unmodified, for yourself or inside your
+organisation, carries no such obligation.

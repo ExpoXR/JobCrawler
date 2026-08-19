@@ -50,6 +50,197 @@ export async function listSettings(): Promise<SettingRecord[]> {
   }));
 }
 
+/* --- Model provider configuration ---------------------------------------- */
+
+/**
+ * The `provider_settings` table, which holds what an administrator configures in
+ * the dashboard. Distinct from `source_providers` below: that one mirrors
+ * code-defined data sources so they can be toggled, this one *is* the
+ * configuration for a model provider.
+ *
+ * `secret_ciphertext` is written and read only through
+ * `encryptSecret`/`decryptSecret`; nothing here ever sees a plaintext key. The
+ * older `secret_ref` mode — naming an environment variable instead — remains
+ * supported and is still the better option where a deployment can manage it.
+ */
+export type ModelProviderKind = 'ai' | 'embedding';
+
+export interface ModelProviderRecord {
+  id: string;
+  providerKey: string;
+  kind: ModelProviderKind;
+  displayName: string | null;
+  enabled: boolean;
+  model: string | null;
+  baseUrl: string | null;
+  /** Name of an environment variable holding the key, if that mode is in use. */
+  secretRef: string | null;
+  /** The encrypted key, if one is stored. Never leaves the server. */
+  secretCiphertext: Buffer | null;
+  secretLast4: string | null;
+  secretUpdatedAt: Date | null;
+  temperature: number | null;
+  timeoutMs: number | null;
+  maxTokens: number | null;
+  options: Record<string, unknown>;
+  updatedAt: Date;
+}
+
+interface ModelProviderRow {
+  id: string;
+  provider_key: string;
+  kind: ModelProviderKind;
+  display_name: string | null;
+  enabled: boolean;
+  model: string | null;
+  base_url: string | null;
+  secret_ref: string | null;
+  secret_ciphertext: Buffer | null;
+  secret_last4: string | null;
+  secret_updated_at: Date | null;
+  temperature: number | null;
+  timeout_ms: number | null;
+  max_tokens: number | null;
+  options: Record<string, unknown> | null;
+  updated_at: Date;
+}
+
+const MODEL_PROVIDER_COLUMNS = `
+  id, provider_key, kind, display_name, enabled, model, base_url, secret_ref,
+  secret_ciphertext, secret_last4, secret_updated_at, temperature, timeout_ms,
+  max_tokens, options, updated_at
+`;
+
+function mapModelProviderRow(row: ModelProviderRow): ModelProviderRecord {
+  return {
+    id: row.id,
+    providerKey: row.provider_key,
+    kind: row.kind,
+    displayName: row.display_name,
+    enabled: row.enabled,
+    model: row.model,
+    baseUrl: row.base_url,
+    secretRef: row.secret_ref,
+    secretCiphertext: row.secret_ciphertext,
+    secretLast4: row.secret_last4,
+    secretUpdatedAt: row.secret_updated_at,
+    temperature: row.temperature,
+    timeoutMs: row.timeout_ms,
+    maxTokens: row.max_tokens,
+    options: row.options ?? {},
+    updatedAt: row.updated_at,
+  };
+}
+
+/** The active configuration for a kind, or undefined to fall back to the environment. */
+export async function getActiveModelProvider(
+  kind: ModelProviderKind,
+): Promise<ModelProviderRecord | undefined> {
+  const row = await queryOne<ModelProviderRow>(
+    `SELECT ${MODEL_PROVIDER_COLUMNS} FROM provider_settings WHERE kind = $1 AND enabled`,
+    [kind],
+  );
+  return row ? mapModelProviderRow(row) : undefined;
+}
+
+export async function listModelProviders(): Promise<ModelProviderRecord[]> {
+  const rows = await queryRows<ModelProviderRow>(
+    `SELECT ${MODEL_PROVIDER_COLUMNS} FROM provider_settings
+     WHERE kind IN ('ai', 'embedding')
+     ORDER BY kind, provider_key`,
+  );
+  return rows.map(mapModelProviderRow);
+}
+
+export interface UpsertModelProviderInput {
+  providerKey: string;
+  kind: ModelProviderKind;
+  enabled: boolean;
+  displayName?: string | undefined;
+  model?: string | undefined;
+  baseUrl?: string | undefined;
+  temperature?: number | undefined;
+  timeoutMs?: number | undefined;
+  maxTokens?: number | undefined;
+  options?: Record<string, unknown> | undefined;
+  /**
+   * `undefined` keeps whatever is stored — so saving the form without retyping
+   * the key does not wipe it. `null` clears it deliberately.
+   */
+  secret?: { ciphertext: Buffer; last4: string } | null | undefined;
+  secretRef?: string | null | undefined;
+}
+
+export async function upsertModelProvider(
+  input: UpsertModelProviderInput,
+): Promise<ModelProviderRecord> {
+  // At most one enabled row per kind (unique partial index in 0010), so a new
+  // active provider retires the previous one first.
+  if (input.enabled) {
+    await query(`UPDATE provider_settings SET enabled = FALSE WHERE kind = $1 AND provider_key <> $2`, [
+      input.kind,
+      input.providerKey,
+    ]);
+  }
+
+  const row = await queryOne<ModelProviderRow>(
+    `
+      INSERT INTO provider_settings (
+        provider_key, kind, display_name, enabled, model, base_url,
+        temperature, timeout_ms, max_tokens, options,
+        secret_ciphertext, secret_last4, secret_updated_at, secret_ref
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::jsonb, '{}'::jsonb),
+        $11, $12, CASE WHEN $11::bytea IS NULL THEN NULL ELSE now() END, $13
+      )
+      ON CONFLICT (provider_key) DO UPDATE SET
+        kind = EXCLUDED.kind,
+        display_name = EXCLUDED.display_name,
+        enabled = EXCLUDED.enabled,
+        model = EXCLUDED.model,
+        base_url = EXCLUDED.base_url,
+        temperature = EXCLUDED.temperature,
+        timeout_ms = EXCLUDED.timeout_ms,
+        max_tokens = EXCLUDED.max_tokens,
+        options = EXCLUDED.options,
+        -- $14 distinguishes "leave the stored key alone" from "clear it".
+        secret_ciphertext = CASE WHEN $14 THEN EXCLUDED.secret_ciphertext
+                                 ELSE provider_settings.secret_ciphertext END,
+        secret_last4 = CASE WHEN $14 THEN EXCLUDED.secret_last4
+                            ELSE provider_settings.secret_last4 END,
+        secret_updated_at = CASE WHEN $14 THEN EXCLUDED.secret_updated_at
+                                 ELSE provider_settings.secret_updated_at END,
+        secret_ref = EXCLUDED.secret_ref,
+        updated_at = now()
+      RETURNING ${MODEL_PROVIDER_COLUMNS}
+    `,
+    [
+      input.providerKey,
+      input.kind,
+      input.displayName ?? null,
+      input.enabled,
+      input.model ?? null,
+      input.baseUrl ?? null,
+      input.temperature ?? null,
+      input.timeoutMs ?? null,
+      input.maxTokens ?? null,
+      input.options ? JSON.stringify(input.options) : null,
+      input.secret ? input.secret.ciphertext : null,
+      input.secret ? input.secret.last4 : null,
+      input.secretRef ?? null,
+      input.secret !== undefined,
+    ],
+  );
+  if (!row) throw new Error('Provider upsert returned no row');
+  return mapModelProviderRow(row);
+}
+
+export async function deleteModelProvider(providerKey: string): Promise<void> {
+  await query(`DELETE FROM provider_settings WHERE provider_key = $1`, [providerKey]);
+}
+
+/* --- Source provider registry --------------------------------------------- */
+
 export type ProviderKind =
   | 'geocoding'
   | 'company'

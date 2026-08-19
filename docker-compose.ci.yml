@@ -1,0 +1,18 @@
+# CI-only overlay.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres redis
+#
+# The production stack deliberately keeps Postgres and Redis off the host: only
+# the web service is published. Continuous integration runs the app *on* the
+# runner rather than in a container, so it needs both reachable on localhost.
+#
+# Never merge this into a deployment.
+
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:5432:5432'
+
+  redis:
+    ports:
+      - '127.0.0.1:6379:6379'

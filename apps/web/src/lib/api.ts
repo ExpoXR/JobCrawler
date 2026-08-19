@@ -1,6 +1,8 @@
-import { AppError, getLogger, publicErrorMessage } from '@ejc/shared';
+import { AppError, type ErrorType, getConfig, getLogger, publicErrorMessage } from '@ejc/shared';
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
+
+import { clientAddress } from './rateLimit';
 
 /**
  * Shared API-route helpers.
@@ -24,6 +26,17 @@ export function jsonError(
   return NextResponse.json({ error: message, ...extra }, { status });
 }
 
+/** Error types with a status other than 500. */
+const STATUS_BY_ERROR_TYPE: Partial<Record<ErrorType, number>> = {
+  validation: 400,
+  unauthenticated: 401,
+  forbidden: 403,
+  not_found: 404,
+  rate_limited: 429,
+  not_configured: 503,
+  provider_unavailable: 503,
+};
+
 /** Maps a thrown value to a safe HTTP response. */
 export function handleRouteError(error: unknown, route: string): NextResponse<ApiErrorBody> {
   const logger = getLogger('api');
@@ -39,16 +52,7 @@ export function handleRouteError(error: unknown, route: string): NextResponse<Ap
   }
 
   if (error instanceof AppError) {
-    const status =
-      error.type === 'validation'
-        ? 400
-        : error.type === 'not_configured'
-          ? 503
-          : error.type === 'rate_limited'
-            ? 429
-            : error.type === 'provider_unavailable'
-              ? 503
-              : 500;
+    const status = STATUS_BY_ERROR_TYPE[error.type] ?? 500;
 
     logger.warn('Request failed', { route, errorType: error.type, message: error.message });
     const message =
@@ -87,54 +91,63 @@ export async function readJsonBody(request: Request, maxBytes = 256_000): Promis
 }
 
 /**
- * Very small fixed-window rate limiter.
+ * Rejects a state-changing request that did not come from this application.
  *
- * In-memory and therefore per-instance: enough to stop a single client from
- * hammering search or geocoding on a self-hosted deployment (plan section 37).
- * A multi-instance deployment should front this with a shared limiter.
+ * The session cookie is `SameSite=Lax`, which already blocks the cross-site form
+ * post. This closes the remaining gap: a same-site subdomain, or a browser that
+ * has not applied the default. Requests with no `Origin` at all — curl, a native
+ * client — are allowed through, because CSRF requires a browser to begin with.
  */
-const buckets = new Map<string, { count: number; resetAt: number }>();
+export function assertSameOrigin(request: Request): void {
+  const origin = request.headers.get('origin');
+  if (!origin) return;
 
-export interface RateLimitResult {
-  allowed: boolean;
-  remaining: number;
-  retryAfterSeconds: number;
-}
-
-export function rateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
-  const now = Date.now();
-  const bucket = buckets.get(key);
-
-  if (!bucket || bucket.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true, remaining: limit - 1, retryAfterSeconds: 0 };
+  let expected: string;
+  try {
+    expected = new URL(getConfig().web.baseUrl).origin;
+  } catch {
+    throw new AppError('not_configured', 'PUBLIC_BASE_URL is not a valid URL');
   }
 
-  bucket.count += 1;
-  if (bucket.count > limit) {
-    return {
-      allowed: false,
-      remaining: 0,
-      retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
-    };
-  }
+  if (origin === expected) return;
 
-  // Opportunistic cleanup so the map cannot grow without bound.
-  if (buckets.size > 5000) {
-    for (const [entryKey, entry] of buckets) {
-      if (entry.resetAt <= now) buckets.delete(entryKey);
+  /*
+   * Fall back to comparing the Origin's host against the request's own Host
+   * header — *not* against `request.url`, which behind a port mapping or a
+   * reverse proxy reports the address the server listens on internally rather
+   * than the one the browser used. A container published on :3005 but listening
+   * on :3000 would otherwise reject every request it received.
+   *
+   * Host is client-controlled, but that does not weaken the check: the point is
+   * that a browser sets Origin honestly and a cross-site page cannot forge it,
+   * so an Origin matching the Host the browser addressed is by definition
+   * same-origin.
+   */
+  const host = request.headers.get('host');
+  if (host) {
+    try {
+      if (new URL(origin).host === host) return;
+    } catch {
+      // A malformed Origin is not a match.
     }
   }
 
-  return { allowed: true, remaining: limit - bucket.count, retryAfterSeconds: 0 };
+  throw new AppError('forbidden', `Cross-origin request rejected (origin ${origin})`);
 }
 
-/** Best-effort client identity for rate limiting. Never stored. */
+/**
+ * Best-effort client identity for rate limiting. Never stored.
+ *
+ * The address comes from `clientAddress`, which only trusts as many
+ * `x-forwarded-for` hops as the deployment says sit in front of it.
+ */
 export function clientKey(request: Request, scope: string): string {
-  const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  const real = request.headers.get('x-real-ip');
-  return `${scope}:${forwarded ?? real ?? 'local'}`;
+  const address = clientAddress(request, getConfig().security.trustedProxyHops);
+  return `${scope}:${address ?? 'local'}`;
 }
+
+export { rateLimit } from './rateLimit';
+export type { RateLimitResult } from './rateLimit';
 
 export function tooManyRequests(retryAfterSeconds: number): NextResponse<ApiErrorBody> {
   return NextResponse.json(

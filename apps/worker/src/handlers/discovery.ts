@@ -7,7 +7,7 @@ import {
   discoverCandidates,
   discoverCompanies,
 } from '@ejc/search';
-import { getConfig, getLogger } from '@ejc/shared';
+import { getConfig, getLogger, parseSearchQuery } from '@ejc/shared';
 
 /**
  * Discovery workers: the live half of the hybrid search (plan section 7).
@@ -26,7 +26,10 @@ export function registerDiscoveryWorkers(): WorkerHandle[] {
   const companyDiscovery = createWorker(
     'company-discovery',
     async (job) => {
-      const { searchId, query } = job.data;
+      const { searchId } = job.data;
+      // A queue payload is a trust boundary like any other: it round-trips
+      // through Redis as JSON, so it is re-validated rather than assumed.
+      const query = parseSearchQuery(job.data.query);
 
       const { companies, errors } = await discoverCompanies(searchId, query);
       for (const failed of errors) {
@@ -52,7 +55,8 @@ export function registerDiscoveryWorkers(): WorkerHandle[] {
   );
 
   const websiteCrawl = createWorker('website-crawl', async (job) => {
-    const { companyId, searchId, query } = job.data;
+    const { companyId, searchId } = job.data;
+    const query = job.data.query ? parseSearchQuery(job.data.query) : undefined;
     const company = await getCompanyById(companyId);
     if (!company) {
       logger.warn('Crawl requested for unknown company', { companyId });
@@ -62,14 +66,16 @@ export function registerDiscoveryWorkers(): WorkerHandle[] {
   });
 
   const jobDiscovery = createWorker('job-discovery', async (job) => {
-    const { companyId, searchId, query } = job.data;
+    const { companyId, searchId } = job.data;
+    const query = parseSearchQuery(job.data.query);
     const company = await getCompanyById(companyId);
     if (!company) return;
     await crawlCompanyForJobs(searchId, company, query);
   });
 
   const candidateDiscovery = createWorker('candidate-discovery', async (job) => {
-    const { searchId, query } = job.data;
+    const { searchId } = job.data;
+    const query = parseSearchQuery(job.data.query);
     const found = await discoverCandidates(searchId, query);
     await advanceStage(searchId, 'completed', {
       message: `Found ${found} public profiles`,

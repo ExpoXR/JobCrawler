@@ -1,7 +1,14 @@
 import { getSearchProgress } from '@ejc/database';
 import { z } from 'zod';
 
-import { handleRouteError, jsonError } from '@/lib/api';
+import {
+  clientKey,
+  handleRouteError,
+  jsonError,
+  rateLimit,
+  tooManyRequests,
+} from '@/lib/api';
+import { assertSearchAccess } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,9 +23,17 @@ const paramsSchema = z.object({ id: z.uuid() });
  * search row — the source of truth that workers already update — rather than
  * introducing a pub/sub channel the MVP does not need.
  */
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
+    // Each stream holds a connection for up to ten minutes, so opening them is
+    // the cheap half of a resource-exhaustion attack. This caps how many a
+    // single client can start, not how long one may run.
+    const limit = await rateLimit(clientKey(request, 'sse'), 20, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+
     const { id } = paramsSchema.parse(await context.params);
+
+    await assertSearchAccess(id);
 
     const initial = await getSearchProgress(id);
     if (!initial) return jsonError(404, 'Search not found');

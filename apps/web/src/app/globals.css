@@ -349,6 +349,10 @@ textarea {
   .map-column {
     height: 320px;
   }
+  /* The legend has to fit inside those 320px alongside the map. */
+  .map-container {
+    min-height: 0;
+  }
 }
 
 .panel {
@@ -370,6 +374,8 @@ textarea {
 .filter-disclosure {
   position: sticky;
   top: 4.5rem;
+  display: flex;
+  flex-direction: column;
   max-height: calc(100vh - 6rem);
   min-width: 0;
 }
@@ -378,8 +384,101 @@ textarea {
   display: none;
 }
 
+/*
+ * The panel is a flex column so only its middle band scrolls. `min-height: 0`
+ * is what makes that work: without it a flex child refuses to shrink below its
+ * content, so the bounded height never reaches the scroll container.
+ */
 .filters-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.filters-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ex-space-2);
+  padding: var(--ex-space-3) var(--ex-space-3) 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.filters-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0;
+}
+
+.filters-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.filters-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--ex-space-3);
   overflow-y: auto;
+  /* Stop the wheel handing the gesture to the page at either end. */
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.filters-foot {
+  padding: 0.75rem var(--ex-space-3) var(--ex-space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.filter-group {
+  border-top: 1px solid var(--border);
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+}
+
+.filter-group > summary {
+  margin-bottom: 0.6rem;
+  color: var(--text-muted);
+  font: 550 0.72rem/1.35 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: 550 0.72rem/1.35 var(--font-mono);
+  letter-spacing: 0.02em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.link-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  text-decoration: none;
 }
 
 .query-panel {
@@ -398,7 +497,14 @@ textarea {
   margin-bottom: var(--ex-space-1);
 }
 
+/*
+ * Flex column so the legend keeps its own height and the map takes the rest.
+ * Previously `.map-container` was `height: 100%` of the aside, which pushed the
+ * legend below the sticky viewport.
+ */
 .map-column {
+  display: flex;
+  flex-direction: column;
   position: sticky;
   top: 4.5rem;
   height: calc(100vh - 6rem);
@@ -537,14 +643,28 @@ textarea {
   width: 100%;
 }
 
-[data-search-submit] {
-  margin-top: var(--ex-space-3);
-}
-
 @media (max-width: 1100px) {
+  /*
+   * Single column: the page scrolls, not the panel. Back to block layout so the
+   * disclosure behaves like a plain <details> and the body imposes no bound.
+   */
   .filter-disclosure {
+    display: block;
     position: static;
     max-height: none;
+  }
+
+  .filters-column {
+    display: block;
+    overflow: visible;
+  }
+
+  .filters-body {
+    overflow-y: visible;
+  }
+
+  .filters-foot {
+    position: static;
   }
 
   .filter-disclosure > summary {
@@ -592,6 +712,64 @@ textarea {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ex-space-2);
+  margin-top: var(--ex-space-2);
+  padding: 0.75rem var(--ex-space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.pager-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pager-size label {
+  color: var(--text-muted);
+  font: 550 0.72rem/1.35 var(--font-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.pager-size select {
+  min-height: var(--ex-control-height-sm);
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--ex-line-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+.pager-status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.pager-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pager-position {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.pager-step {
+  min-height: var(--ex-control-height-sm);
+  padding: 0.4rem 0.75rem;
 }
 
 .result-card {
@@ -776,11 +954,90 @@ textarea {
   font-size: 0.86rem;
 }
 
+/* --- Authentication ----------------------------------------------------- */
+
+.auth-layout {
+  display: flex;
+  justify-content: center;
+  padding: var(--ex-space-6) var(--ex-gutter);
+}
+
+.auth-form {
+  width: 100%;
+  max-width: 26rem;
+}
+
+.auth-form h1 {
+  margin-bottom: var(--ex-space-3);
+  font-size: 1.4rem;
+}
+
+.account-email {
+  max-width: 14rem;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-invite {
+  max-width: 30rem;
+  margin-bottom: var(--ex-space-3);
+}
+
+.user-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ex-space-2);
+  margin-bottom: var(--ex-space-3);
+}
+
+/* --- Model providers ----------------------------------------------------- */
+
+.admin-intro {
+  max-width: 60ch;
+  margin-bottom: var(--ex-space-3);
+  color: var(--text-muted);
+}
+
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--ex-space-3);
+  align-items: start;
+}
+
+.provider-form h3 {
+  margin-bottom: var(--ex-space-2);
+  font-size: 0.95rem;
+}
+
+.provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: var(--ex-space-2);
+}
+
 /* --- Map ---------------------------------------------------------------- */
+
+/* Fills the sticky aside; the map takes what the legend does not. */
+.map-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
 .map-container {
   width: 100%;
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 300px;
   border-radius: var(--radius);
   overflow: hidden;

@@ -10,8 +10,14 @@ test-results/
 .env
 .env.local
 .env.*.local
+# Anything derived from .env is a secrets file too: backups, dumps, drafts.
+.env.bak*
+.env.*.bak*
 !.env.example
 runtime/
+.env.bak.20260819-112851
+
+roadmap/
 
 npm-debug.log*
 yarn-error.log*
@@ -28,5 +34,6 @@ pgdata/
 redisdata/
 
 .claude/*
+.codex/*
 Agents.md
 CLAUDE.md

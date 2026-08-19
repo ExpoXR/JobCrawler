@@ -3,13 +3,25 @@ import { syncProviderRegistry } from '@ejc/providers';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { handleRouteError, readJsonBody } from '@/lib/api';
+import {
+  assertSameOrigin,
+  clientKey,
+  handleRouteError,
+  rateLimit,
+  readJsonBody,
+  tooManyRequests,
+} from '@/lib/api';
+import { requireAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const limit = await rateLimit(clientKey(request, 'admin'), 60, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+    await requireAdmin();
+
     // Sync first so a newly added provider appears without a worker restart.
     await syncProviderRegistry();
     return NextResponse.json({ providers: await listSourceProviders() });
@@ -25,6 +37,11 @@ const toggleSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const limit = await rateLimit(clientKey(request, 'admin'), 60, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+    assertSameOrigin(request);
+    await requireAdmin();
+
     const body = toggleSchema.parse(await readJsonBody(request));
     await setProviderEnabled(body.key, body.enabled);
     return NextResponse.json({ ok: true });

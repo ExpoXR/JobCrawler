@@ -3,7 +3,14 @@ import { naturalLanguageQuerySchema } from '@ejc/shared';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { clientKey, handleRouteError, rateLimit, readJsonBody, tooManyRequests } from '@/lib/api';
+import {
+  assertSameOrigin,
+  clientKey,
+  handleRouteError,
+  rateLimit,
+  readJsonBody,
+  tooManyRequests,
+} from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,7 +28,9 @@ const requestSchema = naturalLanguageQuerySchema.extend({
  */
 export async function POST(request: Request) {
   try {
-    const limit = rateLimit(clientKey(request, 'parse'), 20, 60_000);
+    assertSameOrigin(request);
+
+    const limit = await rateLimit(clientKey(request, 'parse'), 20, 60_000);
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
 
     const body = requestSchema.parse(await readJsonBody(request));

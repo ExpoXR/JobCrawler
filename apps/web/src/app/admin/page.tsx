@@ -11,6 +11,9 @@ import {
 import { checkRedisHealth, getQueueStats } from '@ejc/queue';
 import { getConfig } from '@ejc/shared';
 import type { Metadata } from 'next';
+import Link from 'next/link';
+
+import { guardAdminPage } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,9 +24,14 @@ export const metadata: Metadata = { title: 'Admin' };
  *
  * Read-only overview rendered on the server; the mutating operations
  * (toggle provider, block domain, trigger re-crawl) live behind
- * `/api/admin/*`, which the same Basic-auth middleware protects.
+ * `/api/admin/*`, which enforce the same `requireAdmin()` check.
+ *
+ * The edge gate in `proxy.ts` only redirects a caller with no session cookie —
+ * this is the check that actually holds.
  */
 export default async function AdminPage() {
+  await guardAdminPage('/admin');
+
   const config = getConfig();
 
   const [database, redis, companies, activeJobs, candidates, searches, crawls, providers, blocked] =
@@ -45,6 +53,11 @@ export default async function AdminPage() {
     <div className="container">
       <p className="ex-kicker">Operations workspace</p>
       <h1>Admin dashboard</h1>
+
+      <nav className="admin-nav" aria-label="Administration">
+        <Link href="/admin/providers">Model providers</Link>
+        <Link href="/admin/users">Accounts</Link>
+      </nav>
 
       <div className="stat-grid">
         <div className="stat">

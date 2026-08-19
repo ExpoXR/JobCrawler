@@ -3,4 +3,5 @@ export * from './embeddings';
 export * from './providers';
 export * from './queryParser';
 export * from './research';
+export * from './settings';
 export * from './types';

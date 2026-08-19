@@ -1,5 +1,6 @@
 import { AppError, getConfig, withTimeout } from '@ejc/shared';
 
+import { resetSettingsCache, resolveAiSettings, resolveEmbeddingSettings } from './settings';
 import type {
   AiProvider,
   CompletionRequest,
@@ -71,20 +72,46 @@ export interface ProviderSettings {
   timeoutMs: number;
 }
 
+/**
+ * Marks a provider as speaking OpenAI's wire format at somebody else's address.
+ *
+ * The request and response shapes are identical, so LM Studio, vLLM,
+ * llama.cpp, OpenRouter, Groq and Together need no code of their own — only a
+ * base URL. Two things differ: the endpoint is required rather than defaulted,
+ * and a missing API key is acceptable, because a local server usually has no
+ * authentication at all.
+ */
+export interface OpenAiCompatibleOptions {
+  key: string;
+  requireApiKey: boolean;
+  defaultModel: string;
+}
+
+const OPENAI_DEFAULTS: OpenAiCompatibleOptions = {
+  key: 'openai',
+  requireApiKey: true,
+  defaultModel: 'gpt-4o-mini',
+};
+
 export class OpenAiProvider implements AiProvider {
-  readonly key = 'openai';
+  readonly key: string;
   readonly model: string;
   readonly configured: boolean;
   private readonly settings: ProviderSettings;
 
-  constructor(settings: ProviderSettings) {
+  constructor(settings: ProviderSettings, options: OpenAiCompatibleOptions = OPENAI_DEFAULTS) {
     this.settings = settings;
-    this.model = settings.model || 'gpt-4o-mini';
-    this.configured = settings.apiKey.length > 0;
+    this.key = options.key;
+    this.model = settings.model || options.defaultModel;
+    this.configured = options.requireApiKey
+      ? settings.apiKey.length > 0
+      : settings.baseUrl.length > 0;
   }
 
   async complete(request: CompletionRequest): Promise<CompletionResult> {
-    if (!this.configured) throw new AppError('not_configured', 'OpenAI API key is missing');
+    if (!this.configured) {
+      throw new AppError('not_configured', `${this.key} provider is not configured`);
+    }
     const started = Date.now();
 
     const payload = await postJson<{
@@ -92,7 +119,11 @@ export class OpenAiProvider implements AiProvider {
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     }>({
       url: `${this.settings.baseUrl || 'https://api.openai.com/v1'}/chat/completions`,
-      headers: { authorization: `Bearer ${this.settings.apiKey}` },
+      // A local endpoint usually wants no credential at all; sending an empty
+      // bearer token confuses some of them.
+      headers: this.settings.apiKey
+        ? { authorization: `Bearer ${this.settings.apiKey}` }
+        : {},
       body: {
         model: this.model,
         messages: request.messages,
@@ -320,27 +351,52 @@ export class DisabledAiProvider implements AiProvider {
   }
 }
 
+const OPENAI_EMBEDDING_DEFAULTS: OpenAiCompatibleOptions = {
+  key: 'openai',
+  requireApiKey: true,
+  defaultModel: 'text-embedding-3-small',
+};
+
 export class OpenAiEmbeddingProvider implements EmbeddingProvider {
-  readonly key = 'openai';
+  readonly key: string;
   readonly model: string;
   readonly dimensions: number;
   readonly configured: boolean;
   private readonly settings: ProviderSettings;
+  private readonly sendsDimensions: boolean;
 
-  constructor(settings: ProviderSettings, dimensions: number) {
+  constructor(
+    settings: ProviderSettings,
+    dimensions: number,
+    options: OpenAiCompatibleOptions = OPENAI_EMBEDDING_DEFAULTS,
+  ) {
     this.settings = settings;
-    this.model = settings.model || 'text-embedding-3-small';
+    this.key = options.key;
+    this.model = settings.model || options.defaultModel;
     this.dimensions = dimensions;
-    this.configured = settings.apiKey.length > 0;
+    this.configured = options.requireApiKey
+      ? settings.apiKey.length > 0
+      : settings.baseUrl.length > 0;
+    // `dimensions` is an OpenAI extension. Local servers commonly reject an
+    // unknown field outright, and their models have a fixed width anyway.
+    this.sendsDimensions = options.requireApiKey;
   }
 
   async embed(request: EmbeddingRequest): Promise<EmbeddingResult> {
-    if (!this.configured) throw new AppError('not_configured', 'OpenAI API key is missing');
+    if (!this.configured) {
+      throw new AppError('not_configured', `${this.key} embedding provider is not configured`);
+    }
 
     const payload = await postJson<{ data?: Array<{ embedding?: number[] }> }>({
       url: `${this.settings.baseUrl || 'https://api.openai.com/v1'}/embeddings`,
-      headers: { authorization: `Bearer ${this.settings.apiKey}` },
-      body: { model: this.model, input: request.input, dimensions: this.dimensions },
+      headers: this.settings.apiKey
+        ? { authorization: `Bearer ${this.settings.apiKey}` }
+        : {},
+      body: {
+        model: this.model,
+        input: request.input,
+        ...(this.sendsDimensions ? { dimensions: this.dimensions } : {}),
+      },
       signal: request.signal,
       timeoutMs: this.settings.timeoutMs,
     });
@@ -397,66 +453,75 @@ export class DisabledEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
-let cachedAi: AiProvider | undefined;
-let cachedEmbedding: EmbeddingProvider | undefined;
-
-/** Builds the configured chat provider. */
-export function getAiProvider(): AiProvider {
-  if (cachedAi) return cachedAi;
-  const config = getConfig();
+/**
+ * Builds a provider from whatever is configured — a dashboard row if there is
+ * one, the environment otherwise (see `./settings`).
+ *
+ * Asynchronous because the configuration may live in the database. The provider
+ * objects themselves are cheap to construct, so only the *settings* are cached;
+ * that keeps exactly one cache to reason about instead of two that can disagree.
+ */
+export async function getAiProvider(): Promise<AiProvider> {
+  const resolved = await resolveAiSettings();
   const settings: ProviderSettings = {
-    apiKey: config.ai.apiKey,
-    baseUrl: config.ai.baseUrl,
-    model: config.ai.model,
-    temperature: config.ai.temperature,
-    timeoutMs: config.ai.timeoutMs,
+    apiKey: resolved.apiKey,
+    baseUrl: resolved.baseUrl,
+    model: resolved.model,
+    temperature: resolved.temperature,
+    timeoutMs: resolved.timeoutMs,
   };
 
-  switch (config.ai.provider) {
+  switch (resolved.provider) {
     case 'openai':
-      cachedAi = new OpenAiProvider(settings);
-      break;
+      return new OpenAiProvider(settings);
     case 'anthropic':
-      cachedAi = new AnthropicProvider(settings);
-      break;
+      return new AnthropicProvider(settings);
     case 'gemini':
-      cachedAi = new GeminiProvider(settings);
-      break;
+      return new GeminiProvider(settings);
     case 'ollama':
-      cachedAi = new OllamaProvider(settings);
-      break;
+      return new OllamaProvider(settings);
+    // Any endpoint speaking OpenAI's wire format: LM Studio, vLLM, llama.cpp,
+    // OpenRouter, Groq. The base URL is what distinguishes them, so a local
+    // model needs no code of its own.
+    case 'openai_compatible':
+      return new OpenAiProvider(settings, {
+        key: 'openai_compatible',
+        requireApiKey: false,
+        defaultModel: '',
+      });
     default:
-      cachedAi = new DisabledAiProvider();
+      return new DisabledAiProvider();
   }
-  return cachedAi;
 }
 
-export function getEmbeddingProvider(): EmbeddingProvider {
-  if (cachedEmbedding) return cachedEmbedding;
-  const config = getConfig();
+export async function getEmbeddingProvider(): Promise<EmbeddingProvider> {
+  const resolved = await resolveEmbeddingSettings();
+  const dimensions = getConfig().embedding.dimensions;
   const settings: ProviderSettings = {
-    apiKey: config.embedding.apiKey,
-    baseUrl: config.embedding.baseUrl,
-    model: config.embedding.model,
+    apiKey: resolved.apiKey,
+    baseUrl: resolved.baseUrl,
+    model: resolved.model,
     temperature: 0,
-    timeoutMs: config.ai.timeoutMs,
+    timeoutMs: resolved.timeoutMs,
   };
 
-  switch (config.embedding.provider) {
+  switch (resolved.provider) {
     case 'openai':
-      cachedEmbedding = new OpenAiEmbeddingProvider(settings, config.embedding.dimensions);
-      break;
+      return new OpenAiEmbeddingProvider(settings, dimensions);
+    case 'openai_compatible':
+      return new OpenAiEmbeddingProvider(settings, dimensions, {
+        key: 'openai_compatible',
+        requireApiKey: false,
+        defaultModel: '',
+      });
     case 'ollama':
-      cachedEmbedding = new OllamaEmbeddingProvider(settings, config.embedding.dimensions);
-      break;
+      return new OllamaEmbeddingProvider(settings, dimensions);
     default:
-      cachedEmbedding = new DisabledEmbeddingProvider();
+      return new DisabledEmbeddingProvider();
   }
-  return cachedEmbedding;
 }
 
-/** Test helper. */
+/** Drops the resolved-settings cache; call after an administrator saves. */
 export function resetProviderCache(): void {
-  cachedAi = undefined;
-  cachedEmbedding = undefined;
+  resetSettingsCache();
 }

@@ -1,0 +1,46 @@
+version: 2
+
+updates:
+  # One npm ecosystem entry covers the whole workspace: Dependabot reads the
+  # root lockfile and opens a single PR per dependency across all workspaces.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels: [dependencies]
+    groups:
+      # Patch and minor bumps are noise individually and useful in a batch.
+      # Majors stay separate so they get a real review.
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      production-dependencies:
+        dependency-type: production
+        update-types: [minor, patch]
+    ignore:
+      # The Playwright browser build in CI must match the pinned test runner,
+      # so this one is upgraded by hand alongside the workflow.
+      - dependency-name: '@playwright/test'
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, ci]
+
+  # The Dockerfiles pin base images by digest on purpose; Dependabot keeps the
+  # digests current instead of letting them silently rot.
+  - package-ecosystem: docker
+    directories:
+      - /docker/web
+      - /docker/worker
+      - /docker/postgres
+      - /docker/nominatim
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, docker]

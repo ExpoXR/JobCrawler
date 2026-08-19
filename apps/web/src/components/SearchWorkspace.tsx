@@ -3,9 +3,21 @@
 import type { SearchMode, SearchProgress, SearchQuery, SearchResultItem } from '@ejc/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import {
+  clampPage,
+  DEFAULT_PAGE_SIZE,
+  isPageSize,
+  type PageSize,
+} from '../lib/pagination';
 import { FilterPanel } from './FilterPanel';
+import { Pager } from './Pager';
 import { ResultCard } from './ResultCard';
 import { ResultMap } from './ResultMap';
+
+/** Matches the server-side clamp in `listSearchResults`. */
+const RESULT_FETCH_LIMIT = 500;
+
+const PAGE_SIZE_STORAGE_KEY = 'expojobcrawler:page-size';
 
 /**
  * The three-column search workspace (plan section 26).
@@ -53,12 +65,22 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
   const [busy, setBusy] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE);
 
   const eventSourceRef = useRef<EventSource | null>(null);
+  const resultsHeadingRef = useRef<HTMLElement | null>(null);
+
+  // Restore the preferred page size after mount, so the server-rendered markup
+  // and the first client render agree.
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    if (isPageSize(stored)) setPageSize(stored);
+  }, []);
 
   const loadResults = useCallback(async (id: string) => {
     try {
-      const response = await fetch(`/api/search/${id}?limit=200&minScore=0`, {
+      const response = await fetch(`/api/search/${id}?limit=${RESULT_FETCH_LIMIT}&minScore=0`, {
         cache: 'no-store',
       });
       if (!response.ok) return;
@@ -117,6 +139,7 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
     setError(undefined);
     setResults([]);
     setProgress(undefined);
+    setPage(1);
     eventSourceRef.current?.close();
 
     try {
@@ -189,10 +212,34 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
     }
   }, [naturalLanguage, mode]);
 
+  const resetFilters = useCallback(() => {
+    setQuery(emptyQuery(mode));
+  }, [mode]);
+
+  const changePageSize = useCallback((next: PageSize) => {
+    setPageSize(next);
+    setPage(1);
+    window.localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(next));
+  }, []);
+
+  const changePage = useCallback((next: number) => {
+    setPage(next);
+    // Moving the page moves the reader too; without this the viewport stays
+    // wherever the previous page left it.
+    resultsHeadingRef.current?.focus();
+  }, []);
+
   const center = query.location;
   const visibleResults = useMemo(
     () => results.filter((item) => item.match.score >= query.minMatchScore),
     [results, query.minMatchScore],
+  );
+
+  // A shorter result set can strand the reader past the last page.
+  const currentPage = clampPage(page, visibleResults.length, pageSize);
+  const pagedResults = useMemo(
+    () => visibleResults.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [visibleResults, currentPage, pageSize],
   );
 
   const jobCount = visibleResults.filter((item) => item.kind === 'job').length;
@@ -212,6 +259,7 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
           query={query}
           onChange={setQuery}
           onSubmit={() => void runSearch()}
+          onReset={resetFilters}
           busy={busy}
         />
       </details>
@@ -273,7 +321,9 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
 
         {visibleResults.length > 0 ? (
           <div className="result-meta result-summary">
-            <strong>{visibleResults.length} results</strong>
+            <strong tabIndex={-1} ref={resultsHeadingRef}>
+              {visibleResults.length} results
+            </strong>
             {jobCount > 0 ? <span>{jobCount} vacancies</span> : null}
             {potentialCount > 0 ? <span>{potentialCount} potential employers</span> : null}
             {candidateCount > 0 ? <span>{candidateCount} profiles</span> : null}
@@ -295,16 +345,25 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
                 : 'Enter a location and press Search.'}
           </div>
         ) : (
-          <ul className="result-list">
-            {visibleResults.map((item) => (
-              <ResultCard
-                key={item.id}
-                item={item}
-                selected={item.id === selectedId}
-                onSelect={setSelectedId}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="result-list">
+              {pagedResults.map((item) => (
+                <ResultCard
+                  key={item.id}
+                  item={item}
+                  selected={item.id === selectedId}
+                  onSelect={setSelectedId}
+                />
+              ))}
+            </ul>
+            <Pager
+              total={visibleResults.length}
+              page={currentPage}
+              pageSize={pageSize}
+              onPageChange={changePage}
+              onPageSizeChange={changePageSize}
+            />
+          </>
         )}
       </section>
 

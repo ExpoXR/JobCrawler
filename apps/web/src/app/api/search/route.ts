@@ -3,7 +3,15 @@ import { getSearchStats } from '@ejc/database';
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
 
-import { clientKey, handleRouteError, rateLimit, readJsonBody, tooManyRequests } from '@/lib/api';
+import {
+  assertSameOrigin,
+  clientKey,
+  handleRouteError,
+  rateLimit,
+  readJsonBody,
+  tooManyRequests,
+} from '@/lib/api';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,17 +30,24 @@ const requestSchema = z.object({
  */
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
+
     // Searches are expensive: they geocode, hit the database and fan out to
     // crawlers. A tighter budget than the read endpoints is deliberate.
-    const limit = rateLimit(clientKey(request, 'search'), 10, 60_000);
+    const limit = await rateLimit(clientKey(request, 'search'), 10, 60_000);
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
 
     const body = requestSchema.parse(await readJsonBody(request));
+
+    // Signing in is optional. A search made while signed in belongs to that
+    // account, which is what lets the export endpoint refuse everyone else.
+    const user = await getCurrentUser();
 
     const result = await startSearch({
       query: body.query,
       ...(body.naturalLanguage ? { naturalLanguage: body.naturalLanguage } : {}),
       ...(body.indexOnly !== undefined ? { indexOnly: body.indexOnly } : {}),
+      ...(user ? { userId: user.id } : {}),
     });
 
     return NextResponse.json(

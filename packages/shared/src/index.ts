@@ -4,6 +4,7 @@ export * from './errors';
 export * from './geo';
 export * from './logger';
 export * from './schemas';
+export * from './secrets';
 export * from './text';
 export * from './types';
 export * from './vocabulary';

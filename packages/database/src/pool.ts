@@ -26,6 +26,15 @@ export function getPool(): pg.Pool {
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
     application_name: 'expojobcrawler',
+    /*
+     * Server-side ceilings, so a pathological query cannot hold a connection
+     * indefinitely and exhaust the pool for everyone else. The radius and
+     * vector searches are the realistic worst case and finish well inside this.
+     */
+    statement_timeout: 30_000,
+    // A transaction left open by a crashed caller holds locks and blocks
+    // vacuum; Postgres reclaims it rather than waiting for a TCP timeout.
+    idle_in_transaction_session_timeout: 60_000,
   });
 
   pool.on('error', (error) => {

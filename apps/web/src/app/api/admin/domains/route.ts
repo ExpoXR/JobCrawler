@@ -8,7 +8,15 @@ import {
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { handleRouteError, readJsonBody } from '@/lib/api';
+import {
+  assertSameOrigin,
+  clientKey,
+  handleRouteError,
+  rateLimit,
+  readJsonBody,
+  tooManyRequests,
+} from '@/lib/api';
+import { requireAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,8 +28,11 @@ const domainSchema = z
   .regex(/^[a-z0-9.-]+$/i, 'Not a valid hostname')
   .transform((value) => value.toLowerCase().replace(/^www\./, ''));
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const limit = await rateLimit(clientKey(request, 'admin'), 60, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+    await requireAdmin();
     return NextResponse.json({ domains: await listBlockedDomains() });
   } catch (error) {
     return handleRouteError(error, 'GET /api/admin/domains');
@@ -43,6 +54,11 @@ const blockSchema = z.object({
  */
 export async function POST(request: Request) {
   try {
+    const limit = await rateLimit(clientKey(request, 'admin'), 60, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+    assertSameOrigin(request);
+    await requireAdmin();
+
     const body = blockSchema.parse(await readJsonBody(request));
 
     await blockDomain(body.domain, body.reason, 'admin');
@@ -58,6 +74,11 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const limit = await rateLimit(clientKey(request, 'admin'), 60, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+    assertSameOrigin(request);
+    await requireAdmin();
+
     const url = new URL(request.url);
     const domain = domainSchema.parse(url.searchParams.get('domain') ?? '');
     await unblockDomain(domain);

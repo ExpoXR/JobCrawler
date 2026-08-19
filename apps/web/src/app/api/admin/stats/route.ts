@@ -9,14 +9,24 @@ import {
 import { checkRedisHealth, getQueueStats } from '@ejc/queue';
 import { NextResponse } from 'next/server';
 
-import { handleRouteError } from '@/lib/api';
+import {
+  clientKey,
+  handleRouteError,
+  rateLimit,
+  tooManyRequests,
+} from '@/lib/api';
+import { requireAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /** Aggregated dashboard data (plan section 33). */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const limit = await rateLimit(clientKey(request, 'admin'), 60, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+    await requireAdmin();
+
     const [database, redis, companies, jobs, candidates, searches, crawls] = await Promise.all([
       checkDatabaseHealth(),
       checkRedisHealth(),

@@ -196,7 +196,7 @@ export async function researchOpportunity(
   company: Company | undefined,
   options: ResearchOptions = {},
 ): Promise<ResearchResult> {
-  const provider = getAiProvider();
+  const provider = await getAiProvider();
   const sources = collectSources(job, company);
   const hasQueryContext = Boolean(options.hasQueryContext ?? true);
 
@@ -272,7 +272,7 @@ export async function summarizeJob(
   job: Job,
   options: ResearchOptions = {},
 ): Promise<string | undefined> {
-  const provider = getAiProvider();
+  const provider = await getAiProvider();
   if (!provider.configured || !job.description) return undefined;
 
   try {

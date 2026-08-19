@@ -41,6 +41,27 @@ test('mobile filters collapse without hiding the search workspace', async ({ pag
   await expect(page.getByText('Enter a location and press Search.')).toBeVisible();
 });
 
+test('filter panel scrolls on its own without moving the page', async ({ page }) => {
+  // Short enough that the filter form cannot fit, which is the case that used
+  // to clip the Search button out of reach.
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.goto('/search?mode=jobs');
+
+  const body = page.locator('.filters-body');
+  await expect(body).toBeVisible();
+
+  const overflows = await body.evaluate((el) => el.scrollHeight > el.clientHeight);
+  expect(overflows).toBe(true);
+
+  await body.evaluate((el) => el.scrollBy(0, 400));
+
+  expect(await body.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  // The submit button lives outside the scrolling band, so it stays put.
+  await expect(page.locator('[data-search-submit]')).toBeInViewport();
+});
+
 test('reduced motion and 200 percent zoom remain usable', async ({ page, context }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 768, height: 900 });

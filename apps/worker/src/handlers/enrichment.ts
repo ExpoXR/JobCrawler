@@ -32,7 +32,7 @@ const logger = getLogger('worker');
 
 export function registerEnrichmentWorkers(): WorkerHandle[] {
   const embedding = createWorker('embedding', async (job) => {
-    if (!isEmbeddingEnabled()) return;
+    if (!(await isEmbeddingEnabled())) return;
 
     const { subjectType, subjectId } = job.data;
 

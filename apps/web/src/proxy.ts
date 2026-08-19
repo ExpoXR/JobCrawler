@@ -1,74 +1,91 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+import { buildCsp, cspHeaderName, tileOriginFrom, type CspMode } from '@/lib/csp';
+
 /**
- * Admin authentication (plan section 33).
+ * Two jobs, both of which have to happen before the app renders.
  *
- * The public app requires no account; everything under `/admin` and
- * `/api/admin` does. HTTP Basic over the deployment's TLS is deliberate for a
- * self-hosted single-operator tool: no session store, no cookie handling, no
- * password reset flow to get wrong.
+ * **1. Content-Security-Policy.** The policy carries a per-request nonce, so it
+ * cannot be a static header in `next.config.ts`. The nonce is passed inward on
+ * `x-nonce` for the root layout's inline theme script, and outward in the CSP
+ * header; Next picks it up for its own bootstrap scripts automatically.
  *
- * With no `ADMIN_PASSWORD` set, the admin area is closed rather than open —
- * failing safe matters more than convenience here.
+ * **2. An edge gate for the admin area.** This runs on the edge runtime and
+ * therefore cannot reach Postgres, so it can only see *whether* a session cookie
+ * is present — never whether it is valid, or whose. It is a redirect, not an
+ * authorisation check. **The real check is `requireAdmin()` inside each route
+ * handler and page**, on the Node runtime, against the database. Nothing here is
+ * load-bearing for security.
  */
 
-const REALM = 'ExpoJobCrawler Admin';
+const SESSION_COOKIE = 'ejc_session';
 
-function unauthorized(message = 'Authentication required'): NextResponse {
-  return new NextResponse(message, {
-    status: 401,
-    headers: {
-      'www-authenticate': `Basic realm="${REALM}", charset="UTF-8"`,
-      'content-type': 'text/plain; charset=utf-8',
-    },
-  });
+function generateNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes));
 }
 
-/** Length-independent comparison to avoid leaking the secret by timing. */
-function safeEquals(a: string, b: string): boolean {
-  const length = Math.max(a.length, b.length);
-  let mismatch = a.length === b.length ? 0 : 1;
-  for (let i = 0; i < length; i += 1) {
-    mismatch |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  }
-  return mismatch === 0;
+function applySecurityHeaders(response: NextResponse, nonce: string): NextResponse {
+  const mode = (process.env.CSP_MODE ?? 'report-only') as CspMode;
+  const header = cspHeaderName(mode);
+  if (!header) return response;
+
+  response.headers.set(
+    header,
+    buildCsp({
+      nonce,
+      development: process.env.NODE_ENV === 'development',
+      tileOrigin: tileOriginFrom(process.env.NEXT_PUBLIC_MAP_TILE_URL),
+    }),
+  );
+  return response;
+}
+
+/** Exact segment matching: `/adminfoo` is not the admin area. */
+function isAdminPath(pathname: string): boolean {
+  return (
+    pathname === '/admin' ||
+    pathname.startsWith('/admin/') ||
+    pathname === '/api/admin' ||
+    pathname.startsWith('/api/admin/')
+  );
 }
 
 export function proxy(request: NextRequest): NextResponse {
-  const expectedUser = process.env['ADMIN_USERNAME'] ?? 'admin';
-  const expectedPassword = process.env['ADMIN_PASSWORD'] ?? '';
+  const nonce = generateNonce();
 
-  if (!expectedPassword) {
-    return new NextResponse(
-      'The admin dashboard is disabled because ADMIN_PASSWORD is not configured.',
-      { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } },
-    );
+  if (isAdminPath(request.nextUrl.pathname) && !request.cookies.has(SESSION_COOKIE)) {
+    // An API client gets a status it can act on; a browser gets the login page.
+    if (request.nextUrl.pathname.startsWith('/api/')) {
+      return applySecurityHeaders(
+        NextResponse.json(
+          { error: 'Please sign in to continue.', type: 'unauthenticated' },
+          { status: 401 },
+        ),
+        nonce,
+      );
+    }
+
+    const login = new URL('/login', request.url);
+    login.searchParams.set('next', request.nextUrl.pathname + request.nextUrl.search);
+    return NextResponse.redirect(login);
   }
 
-  const header = request.headers.get('authorization') ?? '';
-  if (!header.toLowerCase().startsWith('basic ')) return unauthorized();
+  // Forward the nonce so the layout can mark its inline script with it.
+  const headers = new Headers(request.headers);
+  headers.set('x-nonce', nonce);
 
-  let decoded: string;
-  try {
-    decoded = atob(header.slice(6).trim());
-  } catch {
-    return unauthorized('Malformed credentials');
-  }
-
-  const separator = decoded.indexOf(':');
-  if (separator === -1) return unauthorized('Malformed credentials');
-
-  const user = decoded.slice(0, separator);
-  const password = decoded.slice(separator + 1);
-
-  if (!safeEquals(user, expectedUser) || !safeEquals(password, expectedPassword)) {
-    return unauthorized('Invalid credentials');
-  }
-
-  return NextResponse.next();
+  return applySecurityHeaders(NextResponse.next({ request: { headers } }), nonce);
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*'],
+  matcher: [
+    /*
+     * Everything that renders or serves an API, and nothing that does not:
+     * static assets and the image optimiser carry no markup to protect, and
+     * running middleware for them is pure overhead.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|fonts/|robots.txt).*)',
+  ],
 };

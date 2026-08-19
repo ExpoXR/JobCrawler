@@ -3,6 +3,8 @@ import { checkRedisHealth } from '@ejc/queue';
 import { getConfig } from '@ejc/shared';
 import { NextResponse } from 'next/server';
 
+import { clientKey, rateLimit, tooManyRequests } from '@/lib/api';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -48,7 +50,12 @@ async function checkGeocoderHealth(baseUrl: string): Promise<GeocoderHealth> {
  * Reports dependency status without exposing configuration: provider *names*
  * are safe to publish, credentials never are.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Each check touches Postgres and Redis, so the endpoint is a small
+  // amplifier. The ceiling is well above any monitoring interval.
+  const limit = await rateLimit(clientKey(request, 'health'), 60, 60_000);
+  if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+
   const config = getConfig();
   const [database, redis, geocoding] = await Promise.all([
     checkDatabaseHealth(),

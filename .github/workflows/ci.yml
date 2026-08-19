@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, lint and test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor from `engines.node`, and the version the Docker images use.
+        node: ['20.11', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # The Vitest suite is deliberately free of database, Redis and network
+      # dependencies, so this needs no services.
+      - run: npm run check
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  e2e:
+    name: Accessibility and responsive checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Playwright's browser build must match the pinned @playwright/test.
+      - run: npx playwright install --with-deps chromium
+
+      # The project builds its own Postgres image because it needs PostGIS
+      # *and* pgvector together. The CI overlay publishes Postgres and Redis to
+      # localhost, which the production compose file deliberately does not.
+      - name: Start Postgres and Redis
+        env:
+          POSTGRES_PASSWORD: ci-postgres-password
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml \
+            up -d --build --wait postgres redis
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: postgresql://expojobcrawler:ci-postgres-password@127.0.0.1:5432/expojobcrawler
+        run: npm run migrate
+
+      - name: Build and start the web app
+        env:
+          DATABASE_URL: postgresql://expojobcrawler:ci-postgres-password@127.0.0.1:5432/expojobcrawler
+          REDIS_URL: redis://127.0.0.1:6379
+          PUBLIC_BASE_URL: http://127.0.0.1:3005
+          WEB_PORT: '3005'
+        run: |
+          npm run build
+          nohup npm start > /tmp/web.log 2>&1 &
+          # Not /api/health: that reports 503 without a reachable Nominatim,
+          # which CI has no reason to run.
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3005/ > /dev/null; then
+              echo "web app is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "web app did not start within 120s" >&2
+          cat /tmp/web.log >&2
+          exit 1
+
+      - name: Run Playwright
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3005
+        run: npm run test:e2e
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --tail 200
+          echo '--- web ---'
+          tail -200 /tmp/web.log || true
+
+      - if: always()
+        env:
+          POSTGRES_PASSWORD: ci-postgres-password
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v

@@ -3,7 +3,16 @@ import { enqueue } from '@ejc/queue';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { handleRouteError, jsonError, readJsonBody } from '@/lib/api';
+import {
+  assertSameOrigin,
+  clientKey,
+  handleRouteError,
+  jsonError,
+  rateLimit,
+  readJsonBody,
+  tooManyRequests,
+} from '@/lib/api';
+import { requireAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,6 +28,11 @@ const requestSchema = z.union([
 /** Manual crawl / re-crawl / maintenance triggers (plan section 33). */
 export async function POST(request: Request) {
   try {
+    const limit = await rateLimit(clientKey(request, 'admin'), 60, 60_000);
+    if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
+    assertSameOrigin(request);
+    await requireAdmin();
+
     const body = requestSchema.parse(await readJsonBody(request));
 
     if (body.action === 'maintenance') {

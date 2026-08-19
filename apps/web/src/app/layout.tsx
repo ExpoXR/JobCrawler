@@ -1,11 +1,17 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { AccountNav } from '@/components/AccountNav';
 import { ThemeControl } from '@/components/ThemeControl';
+import { getCurrentUser } from '@/lib/auth';
 
 import './expoxr-system.css';
 import './globals.css';
+
+// The header reflects who is signed in, so the shell is rendered per request.
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: {
@@ -25,7 +31,13 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const [user, requestHeaders] = await Promise.all([getCurrentUser(), headers()]);
+
+  // Set by `src/proxy.ts`. Without it the anti-FOUC script below is inline code
+  // with no nonce, which the CSP blocks — the page would flash the wrong theme.
+  const nonce = requestHeaders.get('x-nonce') ?? undefined;
+
   return (
     <html
       lang="en"
@@ -35,6 +47,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     >
       <head>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `try{var t=localStorage.getItem('expojobcrawler-theme')||'light';t=/^(light|dark|system)$/.test(t)?t:'light';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);var r=d?'dark':'light';document.documentElement.dataset.theme=r;document.documentElement.dataset.expoTheme=r;document.documentElement.dataset.themePreference=t;}catch(e){document.documentElement.dataset.theme='light';document.documentElement.dataset.expoTheme='light';document.documentElement.dataset.themePreference='light';}`,
           }}
@@ -55,7 +68,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <nav aria-label="Primary">
               <Link href="/search?mode=jobs">Find jobs</Link>
               <Link href="/search?mode=candidates">Find people</Link>
-              <Link href="/admin">Admin</Link>
+              <AccountNav
+                {...(user ? { email: user.email, role: user.role } : {})}
+              />
             </nav>
             <ThemeControl />
           </div>

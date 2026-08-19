@@ -15,7 +15,7 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: Request) {
   try {
-    const limit = rateLimit(clientKey(request, 'geocode'), 20, 60_000);
+    const limit = await rateLimit(clientKey(request, 'geocode'), 20, 60_000);
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
 
     const url = new URL(request.url);

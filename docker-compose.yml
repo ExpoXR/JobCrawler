@@ -59,14 +59,26 @@ services:
     user: redis
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '192mb', '--maxmemory-policy', 'noeviction']
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --maxmemory
+      - 192mb
+      - --maxmemory-policy
+      - noeviction
+      # Redis is not published to the host and lives on an internal network, so
+      # this is defence in depth: it turns a container escape or a stray
+      # container on the same network from full queue access into nothing.
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     mem_limit: 256m
     cpus: 1
     pids_limit: 128
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', '--no-auth-warning', 'ping']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -114,12 +126,18 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       NOMINATIM_BASE_URL: http://nominatim:8080
       NODE_OPTIONS: --max-old-space-size=320
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      # One hop: the reverse proxy in front of this stack. Set to 0 when the
+      # container is reached directly, or higher behind a CDN.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+      CSP_MODE: ${CSP_MODE:-report-only}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
     ports:
       - '${WEB_PORT:-3000}:3000'
     depends_on:
@@ -149,10 +167,12 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-expojobcrawler}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-expojobcrawler}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       NOMINATIM_BASE_URL: http://nominatim:8080
       NODE_OPTIONS: --max-old-space-size=512
       MIGRATIONS_DIR: /app/migrations
+      # The worker resolves provider settings too, so it needs the same key.
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

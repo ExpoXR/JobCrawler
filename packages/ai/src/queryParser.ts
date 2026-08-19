@@ -275,7 +275,7 @@ export async function parseNaturalLanguageQuery(
   options: ParseOptions = {},
 ): Promise<ParseResult> {
   const heuristic = parseQueryHeuristically(text);
-  const provider = getAiProvider();
+  const provider = await getAiProvider();
 
   if (options.heuristicOnly || !provider.configured) {
     return { parsed: heuristic, usedAi: false };

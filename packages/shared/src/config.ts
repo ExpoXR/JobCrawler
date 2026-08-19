@@ -32,8 +32,21 @@ const csvValues = z
   .default('')
   .transform((value) => value.split(',').map((entry) => entry.trim()).filter(Boolean));
 
-export const AI_PROVIDERS = ['none', 'openai', 'anthropic', 'gemini', 'ollama'] as const;
-export const EMBEDDING_PROVIDERS = ['none', 'openai', 'ollama'] as const;
+/**
+ * `openai_compatible` is not a vendor but a shape: any endpoint speaking
+ * OpenAI's `/chat/completions`. One option therefore covers LM Studio, vLLM,
+ * llama.cpp, OpenRouter, Groq and Together — it reuses `OpenAiProvider` with a
+ * custom base URL, and is how a local model is configured.
+ */
+export const AI_PROVIDERS = [
+  'none',
+  'openai',
+  'anthropic',
+  'gemini',
+  'ollama',
+  'openai_compatible',
+] as const;
+export const EMBEDDING_PROVIDERS = ['none', 'openai', 'ollama', 'openai_compatible'] as const;
 
 export type AiProviderName = (typeof AI_PROVIDERS)[number];
 export type EmbeddingProviderName = (typeof EMBEDDING_PROVIDERS)[number];
@@ -51,6 +64,18 @@ const envSchema = z.object({
   PUBLIC_BASE_URL: z.string().default('http://localhost:3000'),
   ADMIN_USERNAME: z.string().default('admin'),
   ADMIN_PASSWORD: z.string().default(''),
+  // Bootstrap only: the first administrator is seeded from these when the users
+  // table is empty. After that, accounts are managed in the admin dashboard.
+  ADMIN_EMAIL: z.string().default(''),
+  AUTH_SESSION_TTL_HOURS: intFromEnv(24 * 7, 1, 24 * 365),
+  AUTH_SESSION_ABSOLUTE_TTL_HOURS: intFromEnv(24 * 30, 1, 24 * 365),
+
+  // How many reverse proxies sit in front of the app. `x-forwarded-for` is
+  // client-controlled, so only the last N hops were written by infrastructure we
+  // trust; 0 means "not behind a proxy" and the header is ignored entirely.
+  TRUSTED_PROXY_HOPS: intFromEnv(0, 0, 10),
+  // 'report-only' observes without breaking; 'enforce' blocks; 'off' omits it.
+  CSP_MODE: z.enum(['enforce', 'report-only', 'off']).default('report-only'),
 
   GEOCODING_PROVIDER: z.string().default('nominatim'),
   NOMINATIM_BASE_URL: z.string().default('https://nominatim.openstreetmap.org'),
@@ -93,6 +118,12 @@ const envSchema = z.object({
   EMBEDDING_BASE_URL: z.string().default(''),
   EMBEDDING_DIMENSIONS: intFromEnv(1536, 8, 8192),
   EMBEDDING_MAX_CONCURRENCY: intFromEnv(2, 1, 32),
+  // Embedding calls are short; they should not inherit the chat timeout.
+  EMBEDDING_TIMEOUT_MS: intFromEnv(20_000, 1000, 600_000),
+
+  // 32 bytes of base64. Required before the dashboard will accept an API key;
+  // without it the app refuses to store one rather than storing it weakly.
+  SETTINGS_ENCRYPTION_KEY: z.string().default(''),
 
   RECRAWL_JOB_HOURS: intFromEnv(24, 1, 8760),
   RECRAWL_COMPANY_DAYS: intFromEnv(14, 1, 3650),
@@ -108,7 +139,15 @@ export interface AppConfig {
   database: { url: string; poolMax: number };
   redis: { url: string };
   web: { baseUrl: string };
-  admin: { username: string; password: string; enabled: boolean };
+  admin: { username: string; password: string; email: string; enabled: boolean };
+  auth: {
+    sessionTtlHours: number;
+    sessionAbsoluteTtlHours: number;
+  };
+  security: {
+    trustedProxyHops: number;
+    cspMode: 'enforce' | 'report-only' | 'off';
+  };
   geo: {
     provider: string;
     nominatimBaseUrl: string;
@@ -153,6 +192,7 @@ export interface AppConfig {
     baseUrl: string;
     dimensions: number;
     maxConcurrency: number;
+    timeoutMs: number;
   };
   retention: {
     recrawlJobHours: number;
@@ -183,7 +223,16 @@ export function loadConfig(
     admin: {
       username: env.ADMIN_USERNAME,
       password: env.ADMIN_PASSWORD,
+      email: env.ADMIN_EMAIL,
       enabled: env.ADMIN_PASSWORD.length > 0,
+    },
+    auth: {
+      sessionTtlHours: env.AUTH_SESSION_TTL_HOURS,
+      sessionAbsoluteTtlHours: env.AUTH_SESSION_ABSOLUTE_TTL_HOURS,
+    },
+    security: {
+      trustedProxyHops: env.TRUSTED_PROXY_HOPS,
+      cspMode: env.CSP_MODE,
     },
     geo: {
       provider: env.GEOCODING_PROVIDER,
@@ -229,6 +278,7 @@ export function loadConfig(
       baseUrl: env.EMBEDDING_BASE_URL,
       dimensions: env.EMBEDDING_DIMENSIONS,
       maxConcurrency: env.EMBEDDING_MAX_CONCURRENCY,
+      timeoutMs: env.EMBEDDING_TIMEOUT_MS,
     },
     retention: {
       recrawlJobHours: env.RECRAWL_JOB_HOURS,

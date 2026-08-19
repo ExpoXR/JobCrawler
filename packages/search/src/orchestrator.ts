@@ -87,6 +87,8 @@ export interface StartSearchInput {
   naturalLanguage?: string;
   /** Skip live discovery — used by tests and by the "search index only" mode. */
   indexOnly?: boolean;
+  /** Owner of the search. Undefined keeps it anonymous and publicly readable. */
+  userId?: string | undefined;
   signal?: AbortSignal;
 }
 
@@ -130,7 +132,7 @@ export async function startSearch(input: StartSearchInput): Promise<StartSearchR
     throw new AppError('validation', `Could not resolve the location "${query.locationText}"`);
   }
 
-  const searchId = await createSearchSession(query);
+  const searchId = await createSearchSession(query, input.userId);
   await advanceStage(searchId, 'searching_database');
 
   let immediateResults = 0;

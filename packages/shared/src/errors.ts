@@ -12,6 +12,7 @@ export type ErrorType =
   | 'http_client'
   | 'http_server'
   | 'rate_limited'
+  | 'unauthenticated'
   | 'forbidden'
   | 'not_found'
   | 'redirect_loop'
@@ -59,6 +60,7 @@ const DEFAULT_RETRYABLE = new Set<ErrorType>([
 
 /** Maps an HTTP status to the taxonomy above. */
 export function errorTypeForStatus(status: number): ErrorType {
+  if (status === 401) return 'unauthenticated';
   if (status === 403) return 'forbidden';
   if (status === 404 || status === 410) return 'not_found';
   if (status === 429) return 'rate_limited';
@@ -101,6 +103,14 @@ export function publicErrorMessage(error: unknown): string {
         return error.message;
       case 'not_configured':
         return 'This feature is not configured on this deployment.';
+      case 'unauthenticated':
+        return 'Please sign in to continue.';
+      // Both of these carry an authored, non-sensitive message. Collapsing them
+      // to one generic string made a CSRF rejection and a missing admin role
+      // indistinguishable, in the UI and in the logs.
+      case 'forbidden':
+      case 'not_found':
+        return error.message;
       case 'rate_limited':
         return 'The upstream source is rate limiting requests. Please retry shortly.';
       case 'provider_unavailable':

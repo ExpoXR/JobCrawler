@@ -6,3 +6,4 @@ export * from './repositories/crawl';
 export * from './repositories/jobs';
 export * from './repositories/searches';
 export * from './repositories/settings';
+export * from './repositories/users';

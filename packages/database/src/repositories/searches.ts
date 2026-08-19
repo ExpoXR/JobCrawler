@@ -28,6 +28,8 @@ export interface SearchSessionRow {
   started_at: Date;
   finished_at: Date | null;
   updated_at: Date;
+  /** Null for an anonymous search, which remains legal. */
+  user_id: string | null;
 }
 
 const SESSION_COLUMNS = `
@@ -35,19 +37,22 @@ const SESSION_COLUMNS = `
   ST_Y(location::geometry) AS lat,
   ST_X(location::geometry) AS lon,
   radius_km, stage, percent, status_message, result_count, errors, started_at, finished_at,
-  updated_at
+  updated_at, user_id
 `;
 
-export async function createSearchSession(searchQuery: SearchQuery): Promise<string> {
+export async function createSearchSession(
+  searchQuery: SearchQuery,
+  userId?: string | undefined,
+): Promise<string> {
   const row = await queryOne<{ id: string }>(
     `
       INSERT INTO search_sessions (
-        mode, query, raw_query, location_text, location, radius_km, stage, status_message
+        mode, query, raw_query, location_text, location, radius_km, stage, status_message, user_id
       ) VALUES (
         $1, $2::jsonb, $3, $4,
         CASE WHEN $5::float8 IS NULL OR $6::float8 IS NULL THEN NULL
              ELSE ST_SetSRID(ST_MakePoint($5::float8, $6::float8), 4326)::geography END,
-        $7, 'queued', 'Search queued'
+        $7, 'queued', 'Search queued', $8
       )
       RETURNING id
     `,
@@ -59,10 +64,22 @@ export async function createSearchSession(searchQuery: SearchQuery): Promise<str
       searchQuery.location?.lon ?? null,
       searchQuery.location?.lat ?? null,
       Math.round(searchQuery.radiusKm),
+      userId ?? null,
     ],
   );
   if (!row) throw new Error('Failed to create search session');
   return row.id;
+}
+
+/** Ownership check for `/api/search/{id}` and `/api/export`. */
+export async function getSearchOwner(searchId: string): Promise<
+  { found: true; userId: string | null } | { found: false }
+> {
+  const row = await queryOne<{ user_id: string | null }>(
+    `SELECT user_id FROM search_sessions WHERE id = $1`,
+    [searchId],
+  );
+  return row ? { found: true, userId: row.user_id } : { found: false };
 }
 
 export async function getSearchSession(searchId: string): Promise<SearchSessionRow | undefined> {
