@@ -124,6 +124,7 @@ Every code change adds an entry under `[Unreleased]` in the same commit.
 
 ### Fixed
 
+- TypeScript strict indexed access errors in secret encryption tamper tests.
 - `assertSameOrigin` fell back to `request.url` when the `Origin` did not match
   `PUBLIC_BASE_URL`. Behind a port mapping or a reverse proxy that reports the address the
   server listens on internally, not the one the browser used, so a container published on

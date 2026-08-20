@@ -28,6 +28,12 @@ describe('isSecretStorageConfigured', () => {
 });
 
 describe('encryptSecret / decryptSecret', () => {
+  function flipByte(payload: Buffer, index: number): void {
+    const byte = payload[index];
+    expect(byte).toBeDefined();
+    payload[index] = byte! ^ 0x01;
+  }
+
   it('round-trips a secret', () => {
     const secret = 'sk-proj-abc123def456';
     expect(decryptSecret(encryptSecret(secret, key), key)).toBe(secret);
@@ -69,13 +75,13 @@ describe('encryptSecret / decryptSecret', () => {
   it('detects a tampered ciphertext', () => {
     const payload = encryptSecret('sk-proj-abc123def456', key);
     // Flip one bit in the ciphertext body; GCM's tag must catch it.
-    payload[payload.length - 1] ^= 0x01;
+    flipByte(payload, payload.length - 1);
     expect(() => decryptSecret(payload, key)).toThrow(/could not be decrypted/);
   });
 
   it('detects a tampered authentication tag', () => {
     const payload = encryptSecret('sk-proj-abc123def456', key);
-    payload[14] ^= 0x01;
+    flipByte(payload, 14);
     expect(() => decryptSecret(payload, key)).toThrow(/could not be decrypted/);
   });
 
