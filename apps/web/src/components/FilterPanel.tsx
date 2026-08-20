@@ -43,6 +43,13 @@ const SENIORITIES: Seniority[] = ['junior', 'mid', 'senior', 'lead', 'principal'
 
 const DEFAULT_RADIUS_KM = 50;
 
+/**
+ * Mirrors `CRAWL_MAX_DOMAINS_PER_SEARCH`. Server-side config cannot reach a
+ * client component, and the number is here only to set expectations — the
+ * server enforces the real cap regardless of what this says.
+ */
+const MAX_CRAWLED_DOMAINS = 25;
+
 function parseList(value: string): string[] {
   return value
     .split(',')
@@ -77,6 +84,7 @@ function countActiveFilters(query: SearchQuery): number {
     query.salaryMin !== undefined,
     query.minMatchScore > 0,
     query.radiusKm !== DEFAULT_RADIUS_KM,
+    query.crawlWebsitesInRadius,
   ];
 
   return lists.filter((list) => list.length > 0).length + flags.filter(Boolean).length;
@@ -327,6 +335,21 @@ export function FilterPanel({
               Include companies without active vacancies
             </label>
           ) : null}
+
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={query.crawlWebsitesInRadius}
+              onChange={(event) => patch({ crawlWebsitesInRadius: event.target.checked })}
+            />
+            Also crawl company websites in this radius
+          </label>
+          <p className="hint">
+            Off by default. Visits up to {MAX_CRAWLED_DOMAINS} company sites, obeying each
+            one&rsquo;s <code>robots.txt</code> and crawl delay, and takes minutes rather than
+            seconds. Results appear as they are found. Without it you get the indexed results
+            immediately.
+          </p>
         </details>
       </div>
 

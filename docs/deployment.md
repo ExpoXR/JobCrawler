@@ -2,11 +2,15 @@
 
 Two application processes (`web`, `worker`) plus PostgreSQL, Redis, and an internal DACH Nominatim service.
 
+For a first install — prerequisites, the local-development path, first-run
+bootstrap and troubleshooting — start with [installation.md](installation.md).
+This page covers running it in production.
+
 ## Docker Compose
 
 ```bash
 cp .env.example .env
-# Required: POSTGRES_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD
+# Required: POSTGRES_PASSWORD, REDIS_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD
 # Recommended: CRAWLER_USER_AGENT, CRAWLER_CONTACT_EMAIL, PUBLIC_BASE_URL
 
 docker compose up -d --build
@@ -19,7 +23,7 @@ Only `web` publishes a loopback port. Postgres, Redis, and Nominatim stay on the
 | Service | Image | Notes |
 | --- | --- | --- |
 | `postgres` | built from `docker/postgres/Dockerfile` | PostGIS 3.4 + pgvector on PG 16 |
-| `redis` | `redis:7-alpine` | AOF on, `maxmemory-policy noeviction` so queue jobs are never evicted |
+| `redis` | pinned `redis` digest | Password-protected, AOF on, `maxmemory-policy noeviction` so queue jobs are never evicted |
 | `web` | `docker/web/Dockerfile` | Next.js standalone output, non-root |
 | `worker` | `docker/worker/Dockerfile` | runs TypeScript via `tsx`, non-root |
 | `migrate` | same image as worker | one-shot, `profiles: [tools]` |
@@ -55,6 +59,12 @@ Interactive map tiles remain browser-fetched from the configured
 in the browser, and configure another policy-compliant provider before traffic
 outgrows the public tile service.
 
+Google Maps is available as an opt-in alternative, off unless
+`NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE=true` is set **and the web image is
+rebuilt** — `NEXT_PUBLIC_*` values are inlined at build time. The deployment
+holds no Google key; each viewer supplies their own, and it stays in their
+browser. See [maps.md](maps.md).
+
 Scale crawling with `docker compose up -d --scale worker=3`. Workers are
 stateless and coordinate through Redis.
 
@@ -81,16 +91,40 @@ location /api/search/ {
 }
 ```
 
-`X-Forwarded-For` matters: the API rate limiter keys on it.
+`X-Forwarded-For` matters: the API rate limiter keys on it — and **set
+`TRUSTED_PROXY_HOPS` to the number of proxies you actually run**. The header is
+appended to by every hop and the client controls the leftmost entry, so trusting
+more hops than exist makes every rate limit forgeable, and trusting fewer makes
+the limiter key on your proxy instead of the visitor.
+
+Headers the app sets for itself — do not duplicate them in the proxy, and do not
+strip them:
+
+- `Strict-Transport-Security`, emitted only when `PUBLIC_BASE_URL` is `https://`
+- `Content-Security-Policy`, built per request because it carries a nonce.
+  `CSP_MODE` ships as `report-only`; flip it to `enforce` once you have loaded
+  every page and confirmed no violations
+- `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`,
+  `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Permissions-Policy`
+
+Set `PUBLIC_BASE_URL` to the URL the **browser** uses. Behind a port mapping or
+a proxy the app otherwise sees its internal listen address, and every
+state-changing request is rejected as cross-origin.
 
 ## Configuration
 
-All settings are documented in `.env.example`. The ones to review before going
-live:
+Every variable is documented in [configuration.md](configuration.md); `.env.example`
+carries the same set with inline comments. The ones to review before going live:
 
 | Variable | Why |
 | --- | --- |
 | `POSTGRES_PASSWORD` | Compose refuses to start without it |
+| `REDIS_PASSWORD` | Likewise. Redis starts with `--requirepass` and both app services build their `REDIS_URL` from it |
+| `PUBLIC_BASE_URL` | Same-origin checks, the `Secure` cookie flag and HSTS all derive from it |
+| `TRUSTED_PROXY_HOPS` | Wrong value ⇒ rate limits either forgeable or blind |
+| `CSP_MODE` | `report-only` enforces nothing |
+| `SETTINGS_ENCRYPTION_KEY` | Required before the dashboard will accept an API key |
 | `ADMIN_EMAIL` + `ADMIN_PASSWORD` | Seed the first administrator; no account exists without them |
 | `CRAWLER_USER_AGENT`, `CRAWLER_CONTACT_EMAIL` | Required by the OSM usage policy and basic crawling etiquette |
 | `NOMINATIM_BASE_URL` | Self-host for anything beyond light use |

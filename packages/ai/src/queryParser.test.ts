@@ -176,6 +176,7 @@ describe('applyParsedQuery', () => {
     keywords: [],
     exclusions: [],
     includePotentialEmployers: true,
+    crawlWebsitesInRadius: false,
     minMatchScore: 0,
   };
 

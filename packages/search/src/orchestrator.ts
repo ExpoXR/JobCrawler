@@ -2,6 +2,7 @@ import { applyParsedQuery, parseNaturalLanguageQuery } from '@ejc/ai';
 import {
   createSearchSession,
   getSearchSession,
+  getSettingOr,
   saveSearchResults,
   type SearchResultInput,
   updateSearchProgress,
@@ -164,8 +165,17 @@ export async function startSearch(input: StartSearchInput): Promise<StartSearchR
     });
   }
 
+  /*
+   * Live discovery is opt-in twice over: the user asks for it per search, and an
+   * operator can switch it off for the whole deployment. `crawler.enabled` has
+   * been seeded in `settings` since migration 0007 without anything reading it;
+   * this is that switch.
+   */
+  const crawlingAllowed = await getSettingOr('crawler.enabled', true).catch(() => true);
+  const wantsDiscovery = query.crawlWebsitesInRadius && !input.indexOnly;
+
   let liveDiscoveryStarted = false;
-  if (!input.indexOnly) {
+  if (wantsDiscovery && crawlingAllowed) {
     try {
       if (query.mode === 'candidates') {
         await enqueue('candidate-discovery', { searchId, query }, { jobId: `candidates:${searchId}` });
@@ -188,7 +198,12 @@ export async function startSearch(input: StartSearchInput): Promise<StartSearchR
       });
     }
   } else {
-    await advanceStage(searchId, 'completed', { resultCount: immediateResults });
+    await advanceStage(searchId, 'completed', {
+      message: wantsDiscovery
+        ? 'Live crawling is disabled on this deployment; showing indexed results'
+        : 'Indexed results only — tick "crawl company websites" to search live',
+      resultCount: immediateResults,
+    });
   }
 
   logger.info('Search started', {
@@ -196,6 +211,7 @@ export async function startSearch(input: StartSearchInput): Promise<StartSearchR
     immediateResults,
     liveDiscoveryStarted,
     radiusKm: query.radiusKm,
+    crawlRequested: query.crawlWebsitesInRadius,
   });
 
   return { searchId, query, immediateResults, liveDiscoveryStarted };

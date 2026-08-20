@@ -105,3 +105,34 @@ references are inert. Invalid XML is skipped, never fatal.
 A flaky origin must not silently empty the index. Scheduling lives in the
 `cleanup` queue: active jobs every `RECRAWL_JOB_HOURS` (24 h), companies every
 `RECRAWL_COMPANY_DAYS` (14 d).
+
+## What triggers a crawl
+
+Nothing does, by default. A search reads the index and returns; it visits no
+third-party site unless somebody asks for it.
+
+| Trigger | Who | Scope |
+| --- | --- | --- |
+| `crawlWebsitesInRadius` on the search form | anyone | companies discovered in the radius, `CRAWL_MAX_DOMAINS_PER_SEARCH` |
+| **Crawl these websites** on a result set | signed-in accounts | the companies behind the current results — 10 domains for a user, 50 for an admin |
+| `/api/admin/recrawl` | administrators | one company, or a maintenance task |
+| Scheduled verification | the worker | jobs and companies past their re-crawl age |
+
+`crawler.enabled` in the `settings` table switches all of the on-demand paths off
+for the whole deployment; the value is read per search, so it takes effect
+without a restart.
+
+Anonymous visitors cannot start a crawl. Everything else in the public
+application is read-only, whereas a crawl spends the deployment's bandwidth and
+appears in other people's access logs under its user agent — that belongs to an
+account.
+
+### robots.txt caching
+
+A fetched `robots.txt` is cached per domain for 24 hours; a 5xx is cached for
+one hour and continues to mean "assume disallowed" per RFC 9309 until it
+expires. Without this, crawling twenty companies meant twenty `robots.txt`
+requests, and re-running the same search meant twenty more.
+
+Cache failures are never fatal: a crawl that cannot reach Postgres still fetches
+`robots.txt` and still obeys it.

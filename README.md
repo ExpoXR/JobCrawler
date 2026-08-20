@@ -38,21 +38,30 @@ embedding provider improves quality; it is never required.
 
 ## Quick start (Docker)
 
+Full instructions, including prerequisites and troubleshooting, are in
+[docs/installation.md](docs/installation.md).
+
 ```bash
 cp .env.example .env
-# Set at least POSTGRES_PASSWORD, ADMIN_EMAIL and ADMIN_PASSWORD.
+# Set at least POSTGRES_PASSWORD, REDIS_PASSWORD, ADMIN_EMAIL and ADMIN_PASSWORD.
 
 docker compose up -d --build
-docker compose run --rm migrate     # apply database migrations
+docker compose run --rm migrate     # apply database migrations — not automatic
 docker compose -f docker-compose.nominatim.yml up -d
 ```
+
+`docker compose up` does **not** run the migrations: the `migrate` service is behind the
+`tools` profile, so schema changes stay a deliberate act. Skipping it leaves an app that
+starts and then fails on the first query.
 
 Open <http://localhost:3000>.
 
 Searching needs no account. Administration does: sign in at `/login` with the
 `ADMIN_EMAIL` / `ADMIN_PASSWORD` pair, which seeds the first administrator on a
-deployment whose users table is still empty. Change that password under
-`/admin/users`, then clear `ADMIN_PASSWORD` from the environment.
+deployment whose users table is still empty. Change that password, then clear `ADMIN_PASSWORD` from the environment — the
+self-service change-password screen does not exist yet, so until it does that
+means the API call documented in
+[docs/authentication.md](docs/authentication.md).
 
 A search run while signed in belongs to that account, so its results and export
 are private to it. A search run signed out stays readable by anyone holding its
@@ -60,7 +69,9 @@ id, exactly as before.
 
 ## Quick start (local development)
 
-Requires Node 20.11+ and a PostgreSQL 16 with PostGIS and pgvector, plus Redis.
+Requires Node 20.11+ and a PostgreSQL 16 with PostGIS and pgvector, plus Redis. No Node on
+the machine? `docker-compose.dev.yml` provides a toolchain container that runs the npm
+scripts — see [docs/installation.md](docs/installation.md).
 
 ```bash
 npm install
@@ -169,12 +180,21 @@ back to lexical signals.
 
 ## Documentation
 
+Start here:
+
+- [docs/installation.md](docs/installation.md) — install, run, verify, troubleshoot
+- [docs/configuration.md](docs/configuration.md) — every environment variable
+- [docs/authentication.md](docs/authentication.md) — accounts, roles, sessions
+
+Reference:
+
 - [docs/architecture.md](docs/architecture.md)
 - [docs/database.md](docs/database.md)
 - [docs/providers.md](docs/providers.md) — how to add a new source
 - [docs/crawler.md](docs/crawler.md)
 - [docs/ai.md](docs/ai.md)
 - [docs/ai-providers.md](docs/ai-providers.md) — configuring OpenAI, Claude, Gemini or a local model
+- [docs/maps.md](docs/maps.md) — the OpenStreetMap default, and the optional Google Maps mode
 - [docs/deployment.md](docs/deployment.md)
 - [docs/security.md](docs/security.md)
 

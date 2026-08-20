@@ -1,3 +1,4 @@
+import { getRobotsCache, setRobotsCache } from '@ejc/database';
 import {
   AppError,
   classifyError,
@@ -68,10 +69,33 @@ export interface CrawlSiteResult {
 }
 
 /** Loads and parses robots.txt. Absent or broken means "crawl allowed". */
+/** How long a fetched robots.txt stays good for. */
+const ROBOTS_CACHE_HOURS = 24;
+
+/**
+ * Fetches `/robots.txt`, or reuses a recent copy.
+ *
+ * Politeness is the point: without the cache, crawling twenty companies for one
+ * search means twenty robots.txt requests, and re-running the search means
+ * twenty more. `robots_cache` has existed since migration 0005 with nothing
+ * reading it.
+ *
+ * A cache failure is never fatal — a crawl that cannot reach Postgres should
+ * still fetch robots.txt and obey it, rather than refusing to run.
+ */
 async function loadRobots(
   origin: string,
+  domain: string,
   signal?: AbortSignal,
 ): Promise<{ robots: RobotsTxt; serverError: boolean }> {
+  const cached = await getRobotsCache(domain).catch(() => undefined);
+  if (cached) {
+    // A cached 5xx keeps meaning "assume disallowed" until it expires; that is
+    // what stops a struggling host being re-probed on every search.
+    const serverError = cached.statusCode !== null && cached.statusCode >= 500;
+    return { robots: parseRobotsTxt(cached.body ?? ''), serverError };
+  }
+
   const robotsUrl = new URL('/robots.txt', origin).toString();
   try {
     const options: Parameters<typeof safeFetch>[1] = {
@@ -80,11 +104,30 @@ async function loadRobots(
     };
     if (signal) options.signal = signal;
     const response = await safeFetch(robotsUrl, options);
-    return { robots: parseRobotsTxt(response.body), serverError: false };
+
+    const robots = parseRobotsTxt(response.body);
+    await setRobotsCache({
+      domain,
+      body: response.body,
+      crawlDelayMs: null,
+      statusCode: response.status,
+      ttlHours: ROBOTS_CACHE_HOURS,
+    }).catch(() => undefined);
+
+    return { robots, serverError: false };
   } catch (error) {
     const type = classifyError(error);
     // 5xx on robots.txt means "assume disallowed" per RFC 9309.
     const serverError = type === 'http_server' || type === 'rate_limited';
+
+    await setRobotsCache({
+      domain,
+      body: null,
+      crawlDelayMs: null,
+      statusCode: serverError ? 503 : 404,
+      ttlHours: serverError ? 1 : ROBOTS_CACHE_HOURS,
+    }).catch(() => undefined);
+
     return { robots: { groups: [], sitemaps: [] }, serverError };
   }
 }
@@ -134,7 +177,7 @@ export async function crawlSite(
   };
 
   const { robots, serverError } = respectRobots
-    ? await loadRobots(origin, options.signal)
+    ? await loadRobots(origin, domain, options.signal)
     : { robots: { groups: [], sitemaps: [] } as RobotsTxt, serverError: false };
 
   if (serverError) {

@@ -17,7 +17,32 @@ export interface CspOptions {
   development?: boolean;
   /** Tile server from `NEXT_PUBLIC_MAP_TILE_URL`, if it is not the default. */
   tileOrigin?: string | undefined;
+  /**
+   * Widens the policy for the Google Maps JavaScript API.
+   *
+   * Only true where the operator set `NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE`.
+   * A deployment that never offers Google has no Google hosts in its policy at
+   * all, which is the point of the flag.
+   */
+  googleMaps?: boolean;
 }
+
+/**
+ * Hosts the Maps JavaScript API needs, by directive.
+ *
+ * The `script-src` entry looks redundant next to `'strict-dynamic'`, which tells
+ * a CSP3 browser to ignore host allowlists entirely — and does: the loader is
+ * injected by our own nonce-carrying bundle, so it inherits trust. It is there
+ * for CSP2 browsers, which ignore `'strict-dynamic'` and enforce the allowlist.
+ */
+const GOOGLE_MAPS_HOSTS = {
+  script: ['https://maps.googleapis.com'],
+  img: ['https://*.googleapis.com', 'https://*.gstatic.com'],
+  connect: ['https://maps.googleapis.com', 'https://*.googleapis.com'],
+  // Maps links a stylesheet for its own icon font.
+  style: ['https://fonts.googleapis.com'],
+  font: ['https://fonts.gstatic.com'],
+} as const;
 
 /**
  * Extracts the origin from a tile URL template.
@@ -39,6 +64,9 @@ export function tileOriginFrom(template: string | undefined): string | undefined
 
 export function buildCsp(options: CspOptions): string {
   const tile = options.tileOrigin ? [options.tileOrigin] : [];
+  const google = options.googleMaps
+    ? GOOGLE_MAPS_HOSTS
+    : { script: [], img: [], connect: [], style: [], font: [] };
 
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
@@ -52,16 +80,22 @@ export function buildCsp(options: CspOptions): string {
       "'strict-dynamic'",
       // The dev server evaluates code for hot reloading. Production does not.
       ...(options.development ? ["'unsafe-eval'"] : []),
+      ...google.script,
     ],
 
     // MapLibre injects style elements at runtime, and Next inlines critical CSS.
     // Neither can carry a nonce, so this stays the one loose directive.
-    'style-src': ["'self'", "'unsafe-inline'"],
+    'style-src': ["'self'", "'unsafe-inline'", ...google.style],
 
     // blob: is for map tiles composited client-side; data: for inline icons.
-    'img-src': ["'self'", 'data:', 'blob:', ...tile],
-    'font-src': ["'self'"],
-    'connect-src': ["'self'", ...tile, ...(options.development ? ['ws:'] : [])],
+    'img-src': ["'self'", 'data:', 'blob:', ...tile, ...google.img],
+    'font-src': ["'self'", ...google.font],
+    'connect-src': [
+      "'self'",
+      ...tile,
+      ...google.connect,
+      ...(options.development ? ['ws:'] : []),
+    ],
 
     // MapLibre runs its tile parser in a worker created from a blob URL.
     'worker-src': ["'self'", 'blob:'],

@@ -29,8 +29,12 @@ RUN npm ci --no-audit --no-fund
 FROM base AS build
 ARG NEXT_PUBLIC_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
 ARG PUBLIC_ROBOTS_NOINDEX=true
+# Whether the Google Maps option exists in the UI at all. A build with this off
+# ships no Google option and no Google hosts in the Content-Security-Policy.
+ARG NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE=false
 ENV NEXT_PUBLIC_MAP_TILE_URL=$NEXT_PUBLIC_MAP_TILE_URL
 ENV PUBLIC_ROBOTS_NOINDEX=$PUBLIC_ROBOTS_NOINDEX
+ENV NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE=$NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build --workspace=@ejc/web

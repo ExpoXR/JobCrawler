@@ -1,17 +1,32 @@
 'use client';
 
 import type { GeoPoint, SearchResultItem } from '@ejc/shared';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { toMarkers } from '@/lib/mapMarkers';
+import {
+  forgetMapsKey,
+  googleMapsAllowed,
+  readMapsKey,
+  touchMapsKey,
+  writeMapsKey,
+  type StorageLike,
+} from '@/lib/mapsKey';
+
+import { GoogleMap } from './GoogleMap';
+import { MapLibreMap } from './MapLibreMap';
 
 /**
- * OpenStreetMap result map (plan sections 26 and 27).
+ * The map shell: provider choice, key handling, and the legend both maps share.
  *
- * MapLibre is loaded lazily on the client only, so the server bundle stays free
- * of it and the page still renders without WebGL.
+ * Rendering lives in `MapLibreMap` and `GoogleMap`; neither knows the other
+ * exists. Marker semantics are identical between them (circle = vacancy,
+ * square = potential employer, diamond = candidate; colour by match band), which
+ * is why the legend can sit out here and stay true for both.
  *
- * Markers encode their category by *shape as well as colour* — circle for a
- * vacancy, square for a potential employer, diamond for a candidate — because
- * colour alone is not an accessible signal.
+ * MapLibre over OpenStreetMap is the default and the fallback. Google Maps
+ * appears only where the operator has enabled it *and* the viewer supplies
+ * their own key, which never leaves the browser.
  */
 
 export interface ResultMapProps {
@@ -22,196 +37,187 @@ export interface ResultMapProps {
   onSelect: (id: string) => void;
 }
 
-interface MarkerModel {
-  id: string;
-  point: GeoPoint;
-  kind: SearchResultItem['kind'];
-  score: number;
-  label: string;
-}
+type MapProvider = 'osm' | 'google';
 
-const MAP_TILE_URL =
-  process.env.NEXT_PUBLIC_MAP_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const PROVIDER_STORAGE_KEY = 'expojobcrawler:map-provider';
 
-function pointOf(item: SearchResultItem): GeoPoint | undefined {
-  return item.job?.coordinates ?? item.company?.location ?? item.candidate?.coordinates;
-}
+/** How often the idle expiry of a stored key is noticed by an open tab. */
+const KEY_POLL_MS = 60_000;
 
-function labelOf(item: SearchResultItem): string {
-  if (item.kind === 'candidate') return item.candidate?.publicName ?? 'Public profile';
-  if (item.kind === 'potential_employer') return item.company?.name ?? 'Company';
-  return item.job?.title ?? 'Vacancy';
-}
-
-function colorFor(score: number): string {
-  if (score >= 75) return 'var(--ex-success)';
-  if (score >= 50) return 'var(--ex-warning)';
-  return 'var(--ex-muted)';
-}
-
-/** Builds the marker element: shape by kind, colour by match band. */
-function markerElement(marker: MarkerModel): HTMLElement {
-  const element = document.createElement('button');
-  element.type = 'button';
-  element.setAttribute('aria-label', `${marker.label}, ${Math.round(marker.score)} percent match`);
-  element.style.width = '18px';
-  element.style.height = '18px';
-  element.style.cursor = 'pointer';
-  element.style.background = 'transparent';
-  element.style.border = `3px solid ${colorFor(marker.score)}`;
-  element.style.boxSizing = 'border-box';
-  element.style.padding = '0';
-
-  if (marker.kind === 'job') {
-    element.style.borderRadius = '50%';
-    element.style.backgroundColor = colorFor(marker.score);
-  } else if (marker.kind === 'potential_employer') {
-    element.style.borderRadius = '2px';
-  } else {
-    element.style.borderRadius = '2px';
-    element.style.transform = 'rotate(45deg)';
+/**
+ * Storage can be unavailable — server rendering, private browsing, a browser
+ * configured to block it. None of that should break the map, so every access
+ * degrades to "no stored value" rather than throwing.
+ */
+function sessionStore(): StorageLike | undefined {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
   }
+}
 
-  return element;
+function localStore(): StorageLike | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 export function ResultMap({ center, radiusKm, items, selectedId, onSelect }: ResultMapProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<unknown>(null);
-  const markersRef = useRef<Array<{ remove: () => void }>>([]);
-  const failedRef = useRef(false);
-  const [mapFailed, setMapFailed] = useState(false);
+  const markers = useMemo(() => toMarkers(items), [items]);
+  const allowGoogle = googleMapsAllowed();
 
-  const markers = useMemo<MarkerModel[]>(
-    () =>
-      items
-        .map((item) => {
-          const point = pointOf(item);
-          if (!point) return undefined;
-          return {
-            id: item.id,
-            point,
-            kind: item.kind,
-            score: item.match.score,
-            label: labelOf(item),
-          } satisfies MarkerModel;
-        })
-        .filter((entry): entry is MarkerModel => entry !== undefined),
-    [items],
+  const [provider, setProvider] = useState<MapProvider>('osm');
+  const [apiKey, setApiKey] = useState<string | undefined>(undefined);
+  const [draftKey, setDraftKey] = useState('');
+  const [keyError, setKeyError] = useState<string | undefined>(undefined);
+
+  // Restore the provider choice and any key this tab already holds.
+  useEffect(() => {
+    if (!allowGoogle) return;
+    const stored = localStore()?.getItem(PROVIDER_STORAGE_KEY);
+    if (stored === 'google') setProvider('google');
+    const session = sessionStore();
+    if (session) setApiKey(readMapsKey(session));
+  }, [allowGoogle]);
+
+  /*
+   * The key expires after a period of inactivity, which is only meaningful if
+   * an idle tab notices. Polling beats a timeout because the idle window is
+   * restarted by interaction, and a poll cannot drift out of step with it.
+   */
+  useEffect(() => {
+    if (!apiKey) return;
+    const timer = window.setInterval(() => {
+      const session = sessionStore();
+      if (!session || !readMapsKey(session)) setApiKey(undefined);
+    }, KEY_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [apiKey]);
+
+  const chooseProvider = useCallback((next: MapProvider) => {
+    setProvider(next);
+    localStore()?.setItem(PROVIDER_STORAGE_KEY, next);
+  }, []);
+
+  const submitKey = useCallback(
+    (event: React.FormEvent) => {
+      event.preventDefault();
+      const session = sessionStore();
+      if (!session) {
+        setKeyError('This browser is blocking session storage, so the key cannot be held.');
+        return;
+      }
+      if (!writeMapsKey(session, draftKey)) {
+        setKeyError('That does not look like a Maps API key. Paste the key itself, not a URL.');
+        return;
+      }
+      setKeyError(undefined);
+      setApiKey(draftKey.trim());
+      setDraftKey('');
+    },
+    [draftKey],
   );
 
-  // Create the map once.
-  useEffect(() => {
-    let cancelled = false;
+  const forgetKey = useCallback(() => {
+    const session = sessionStore();
+    if (session) forgetMapsKey(session);
+    setApiKey(undefined);
+  }, []);
 
-    void (async () => {
-      if (!containerRef.current || mapRef.current || failedRef.current) return;
-      try {
-        const maplibre = await import('maplibre-gl');
-        if (cancelled || !containerRef.current) return;
+  /** Any interaction with the map restarts the key's idle window. */
+  const keepAlive = useCallback(() => {
+    if (!apiKey) return;
+    const session = sessionStore();
+    if (session) touchMapsKey(session);
+  }, [apiKey]);
 
-        const map = new maplibre.Map({
-          container: containerRef.current,
-          // Raster OSM tiles keep the deployment free of any API key.
-          style: {
-            version: 8,
-            sources: {
-              osm: {
-                type: 'raster',
-                tiles: [MAP_TILE_URL],
-                tileSize: 256,
-                attribution: '© OpenStreetMap contributors',
-                maxzoom: 19,
-              },
-            },
-            layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-          },
-          center: [center.lon, center.lat],
-          zoom: radiusKm > 100 ? 7 : radiusKm > 40 ? 8.5 : 10,
-          attributionControl: { compact: true },
-        });
-
-        map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
-        map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
-        map.on('error', () => setMapFailed(true));
-        mapRef.current = map;
-      } catch {
-        // No WebGL, blocked tiles, or an offline deployment: fall back to the
-        // list-only view rather than breaking the page.
-        failedRef.current = true;
-        setMapFailed(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [center.lat, center.lon, radiusKm]);
-
-  // Re-render markers whenever results change.
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const map = mapRef.current as
-        | { addControl: unknown; setCenter: (value: [number, number]) => void }
-        | null;
-      if (!map) return;
-
-      const maplibre = await import('maplibre-gl').catch(() => undefined);
-      if (!maplibre || cancelled) return;
-
-      for (const marker of markersRef.current) marker.remove();
-      markersRef.current = [];
-
-      for (const marker of markers.slice(0, 400)) {
-        const element = markerElement(marker);
-        element.addEventListener('click', (event) => {
-          event.stopPropagation();
-          onSelect(marker.id);
-        });
-        if (marker.id === selectedId) {
-          element.style.outline = '3px solid var(--ex-accent)';
-          element.style.outlineOffset = '2px';
-        }
-
-        const instance = new maplibre.Marker({ element })
-          .setLngLat([marker.point.lon, marker.point.lat])
-          .setPopup(
-            new maplibre.Popup({ offset: 14, closeButton: false }).setText(
-              `${marker.label} — ${Math.round(marker.score)}%`,
-            ),
-          )
-          .addTo(map as never);
-
-        markersRef.current.push(instance);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [markers, selectedId, onSelect]);
-
-  // Keep the map centred on the search location when the query changes.
-  useEffect(() => {
-    const map = mapRef.current as { setCenter?: (value: [number, number]) => void } | null;
-    map?.setCenter?.([center.lon, center.lat]);
-  }, [center.lat, center.lon]);
+  const useGoogle = allowGoogle && provider === 'google' && apiKey !== undefined;
 
   return (
-    <div className="map-shell">
-      <div className="map-container" ref={containerRef} role="region" aria-label="Result map">
-        {mapFailed ? (
-          <div className="map-fallback map-fallback--error" role="status">
-            The interactive map is unavailable. All results remain available in the list.
+    <div className="map-shell" onPointerDown={keepAlive} onKeyDown={keepAlive}>
+      {allowGoogle ? (
+        <fieldset className="map-toolbar">
+          <legend className="visually-hidden">Map provider</legend>
+          <label className="checkbox-row">
+            <input
+              type="radio"
+              name="map-provider"
+              checked={provider === 'osm'}
+              onChange={() => chooseProvider('osm')}
+            />
+            OpenStreetMap
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="radio"
+              name="map-provider"
+              checked={provider === 'google'}
+              onChange={() => chooseProvider('google')}
+            />
+            Google Maps
+          </label>
+          {useGoogle ? (
+            <button type="button" className="link-button" onClick={forgetKey}>
+              Forget key
+            </button>
+          ) : null}
+        </fieldset>
+      ) : null}
+
+      {allowGoogle && provider === 'google' && !apiKey ? (
+        <form className="map-key-form" onSubmit={submitKey}>
+          <label htmlFor="maps-key">Google Maps API key</label>
+          <div className="map-key-row">
+            <input
+              id="maps-key"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={draftKey}
+              placeholder="AIza…"
+              onChange={(event) => setDraftKey(event.target.value)}
+            />
+            <button type="submit" className="button" disabled={draftKey.trim().length === 0}>
+              Use key
+            </button>
           </div>
-        ) : markers.length === 0 ? (
-          <div className="map-fallback">
-            No mappable results yet. Results without coordinates still appear in the list.
-          </div>
-        ) : null}
-      </div>
+          {keyError ? (
+            <p className="notice error" role="alert">
+              {keyError}
+            </p>
+          ) : null}
+          <p className="hint">
+            The key stays in this browser tab, is never sent to this server, and is discarded when
+            the tab closes, when you sign out, or after 30 minutes without interaction. A Maps
+            JavaScript key is visible to anyone using this tab, so restrict it by HTTP referrer and
+            by API in Google Cloud before pasting it here. See <code>docs/maps.md</code>.
+          </p>
+        </form>
+      ) : null}
+
+      {useGoogle && apiKey ? (
+        <GoogleMap
+          center={center}
+          radiusKm={radiusKm}
+          markers={markers}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          apiKey={apiKey}
+          onKeyRejected={forgetKey}
+        />
+      ) : (
+        <MapLibreMap
+          center={center}
+          radiusKm={radiusKm}
+          markers={markers}
+          selectedId={selectedId}
+          onSelect={onSelect}
+        />
+      )}
+
       <div className="map-legend" aria-hidden="false">
         <span className="swatch">
           <span className="dot job" /> Active vacancy (circle)

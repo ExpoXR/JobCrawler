@@ -170,6 +170,8 @@ export interface SearchQuery {
   keywords: string[];
   exclusions: string[];
   includePotentialEmployers: boolean;
+  /** Opt in to live crawling of company websites inside the radius. */
+  crawlWebsitesInRadius: boolean;
   minMatchScore: number;
   /** Free-text query the parse came from, when applicable. */
   rawQuery?: string;

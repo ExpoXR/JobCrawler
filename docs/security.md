@@ -112,6 +112,12 @@ elements that cannot carry a nonce; that is the one loose directive.
 `object-src`, `base-uri`, `frame-src` and `frame-ancestors` are `'none'`, and
 `form-action` is `'self'`.
 
+The only third-party hosts that ever enter the policy are the map tile server
+from `NEXT_PUBLIC_MAP_TILE_URL`, and — only where
+`NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE=true` — the Google Maps hosts listed in
+[maps.md](maps.md). A deployment that does not offer the Google map has no
+Google hosts in its policy.
+
 **`CSP_MODE` ships as `report-only`, which enforces nothing.** A policy mistake
 takes an application down silently, so the default observes instead. Load every
 page, confirm the browser console reports no violations, then set
@@ -133,13 +139,25 @@ like an HTTP body. The discovery handlers re-validate their `SearchQuery` with
 
 ## Secrets
 
-- API keys come from the environment only; `provider_settings.secret_ref` stores
-  the *name* of an environment variable, never a value
+- Model-provider API keys reach the app one of two ways: from the environment, or
+  from `/admin/providers`. A key entered in the admin UI is stored in
+  `provider_settings.secret_ciphertext` **encrypted with AES-256-GCM**
+  (`packages/shared/src/secrets.ts`), keyed by `SETTINGS_ENCRYPTION_KEY`. Without
+  that variable the app refuses to store a key at all rather than storing it in
+  the clear. The older `secret_ref` mode — which holds the *name* of an
+  environment variable, never a value — still works and is still the stricter
+  choice
+- No response ever contains a stored key: the API returns `hasSecret` and the
+  last four characters, nothing more
+- **A Google Maps key is never stored server-side at all.** It is supplied by the
+  viewer, lives in their tab's `sessionStorage`, and is never sent to this server
+  — see [maps.md](maps.md)
 - The structured logger redacts any key matching
   `api_key|password|secret|token|authorization|cookie|credential`
 - Secrets never cross into client components; every route touching them is
   `runtime: 'nodejs'` and server-only
-- `.env` is git-ignored; `.env.example` carries placeholders
+- `.env` is git-ignored, along with anything derived from it (`.env.bak*`);
+  `.env.example` carries placeholders
 
 ## Admin access
 

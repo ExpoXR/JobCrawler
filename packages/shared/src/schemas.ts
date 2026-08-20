@@ -76,6 +76,12 @@ export const searchQuerySchema = z.object({
   keywords: stringList(),
   exclusions: stringList(),
   includePotentialEmployers: z.boolean().default(true),
+  /**
+   * Opt in to live crawling. Off by default: a crawl visits dozens of
+   * third-party sites and takes minutes, so it is the user's call, not a
+   * side effect of pressing Search.
+   */
+  crawlWebsitesInRadius: z.boolean().default(false),
   minMatchScore: z.coerce.number().min(0).max(100).default(0),
   rawQuery: z.string().max(4000).optional(),
 });

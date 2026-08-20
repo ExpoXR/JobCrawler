@@ -46,6 +46,7 @@ function emptyQuery(mode: SearchMode): SearchQuery {
     keywords: [],
     exclusions: [],
     includePotentialEmployers: mode === 'jobs',
+    crawlWebsitesInRadius: false,
     minMatchScore: 0,
   };
 }
@@ -67,6 +68,8 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
   const [error, setError] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE);
+  const [crawling, setCrawling] = useState(false);
+  const [crawlNotice, setCrawlNotice] = useState<string | undefined>();
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const resultsHeadingRef = useRef<HTMLElement | null>(null);
@@ -216,6 +219,31 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
     setQuery(emptyQuery(mode));
   }, [mode]);
 
+  /**
+   * Crawls the websites behind the results already on screen — the second way
+   * in, for when the indexed results look promising enough to read properly.
+   * Requires an account, so an anonymous visitor is told to sign in rather than
+   * shown a button that always fails.
+   */
+  const crawlListed = useCallback(async () => {
+    if (!searchId) return;
+    setCrawlNotice(undefined);
+    setCrawling(true);
+    try {
+      const response = await fetch(`/api/search/${searchId}/crawl`, { method: 'POST' });
+      const payload = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      setCrawlNotice(payload.message ?? payload.error ?? 'Could not start the crawl.');
+      if (response.ok) void loadResults(searchId);
+    } catch {
+      setCrawlNotice('Could not reach the server.');
+    } finally {
+      setCrawling(false);
+    }
+  }, [searchId, loadResults]);
+
   const changePageSize = useCallback((next: PageSize) => {
     setPageSize(next);
     setPage(1);
@@ -331,9 +359,23 @@ export function SearchWorkspace({ mode }: { mode: SearchMode }) {
               <>
                 <a href={`/api/export?searchId=${searchId}&format=csv`}>Export CSV</a>
                 <a href={`/api/export?searchId=${searchId}&format=json`}>Export JSON</a>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => void crawlListed()}
+                  disabled={crawling || busy}
+                >
+                  {crawling ? 'Queueing…' : 'Crawl these websites'}
+                </button>
               </>
             ) : null}
           </div>
+        ) : null}
+
+        {crawlNotice ? (
+          <p className="notice" role="status">
+            {crawlNotice}
+          </p>
         ) : null}
 
         {visibleResults.length === 0 ? (

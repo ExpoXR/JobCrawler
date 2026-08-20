@@ -1035,6 +1035,53 @@ textarea {
   min-height: 0;
 }
 
+/*
+ * Provider choice and the key form sit above the map inside the same flex
+ * column, so the map keeps whatever height they leave rather than pushing the
+ * legend out of the sticky aside.
+ */
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding: 0;
+  margin: 0 0 0.5rem;
+  border: 0;
+  flex: 0 0 auto;
+}
+
+.map-toolbar .checkbox-row {
+  margin-bottom: 0;
+}
+
+.map-key-form {
+  flex: 0 0 auto;
+  margin-bottom: 0.5rem;
+}
+
+.map-key-form label {
+  display: block;
+  font: 550 0.72rem/1.35 var(--font-mono);
+  margin-bottom: 0.25rem;
+}
+
+.map-key-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.map-key-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.map-key-form .hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.4rem;
+}
+
 .map-container {
   width: 100%;
   flex: 1 1 auto;

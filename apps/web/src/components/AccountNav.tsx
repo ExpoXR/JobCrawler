@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
+import { forgetMapsKeyInSession } from '@/lib/mapsKey';
+
 /**
  * Account controls in the header.
  *
@@ -17,6 +19,9 @@ export function AccountNav({ email, role }: { email?: string; role?: 'admin' | '
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } finally {
+      // A Google Maps key belongs to the person, not the tab. Signing out is
+      // the point at which they stop being that person on this machine.
+      forgetMapsKeyInSession();
       window.location.assign('/');
     }
   }

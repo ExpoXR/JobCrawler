@@ -21,6 +21,7 @@ function makeQuery(overrides: Partial<SearchQuery> = {}): SearchQuery {
     keywords: [],
     exclusions: [],
     includePotentialEmployers: true,
+    crawlWebsitesInRadius: false,
     minMatchScore: 0,
     ...overrides,
   };

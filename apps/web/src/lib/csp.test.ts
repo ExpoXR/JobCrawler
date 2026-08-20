@@ -51,6 +51,23 @@ describe('buildCsp', () => {
     expect(withTile.get('connect-src')).toContain('https://tiles.example.test');
     expect(withTile.get('script-src')).not.toContain('https://tiles.example.test');
   });
+
+  it('carries no Google hosts unless the Google map is enabled', () => {
+    expect(policy).not.toContain('googleapis.com');
+    expect(policy).not.toContain('gstatic.com');
+  });
+
+  it('admits the Maps API hosts when it is', () => {
+    const withGoogle = directives(buildCsp({ nonce: 'x', googleMaps: true }));
+    expect(withGoogle.get('img-src')).toContain('https://*.gstatic.com');
+    expect(withGoogle.get('connect-src')).toContain('https://maps.googleapis.com');
+    // For CSP2 browsers, which ignore 'strict-dynamic' and enforce the allowlist.
+    expect(withGoogle.get('script-src')).toContain('https://maps.googleapis.com');
+    // Widening the policy must not loosen what makes it worth having.
+    expect(withGoogle.get('script-src')).not.toContain("'unsafe-inline'");
+    expect(withGoogle.get('object-src')).toEqual(["'none'"]);
+    expect(withGoogle.get('frame-ancestors')).toEqual(["'none'"]);
+  });
 });
 
 describe('tileOriginFrom', () => {

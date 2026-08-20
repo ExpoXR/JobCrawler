@@ -11,6 +11,40 @@ Every code change adds an entry under `[Unreleased]` in the same commit.
 
 ### Added
 
+- **`docs/installation.md`** — prerequisites for both paths, the Docker and local-development
+  setups, the toolchain container for machines without Node, first-run bootstrap, how to
+  verify a deployment, a least-privilege database role, and a troubleshooting table. It says
+  plainly that `docker compose up` does *not* run the migrations, which is the single easiest
+  way to end up with a deployment that starts and then fails on the first query.
+- **`docs/configuration.md`** — every environment variable in one place, derived from
+  `packages/shared/src/config.ts`, including the three whose wrong values break a deployment
+  quietly (`TRUSTED_PROXY_HOPS`, `CSP_MODE`, `CRAWL_ALLOW_PRIVATE_ADDRESSES`), which
+  variables are build-time only, and which are read by Compose rather than by the app.
+- **`docs/authentication.md`** — roles, the one-shot bootstrap and its failure modes, session
+  lifetime and everything that ends one, the password hashing parameters, which layer is
+  actually load-bearing for authorisation, and how to recover a lost administrator password.
+
+- **Optional Google Maps, with a key that never reaches this server.** `ResultMap` is now a
+  provider switch over `MapLibreMap` (the unchanged default) and a new `GoogleMap`. The
+  viewer pastes their own Maps JavaScript key; it is held in that tab's `sessionStorage` and
+  discarded when the tab closes, on sign-out, after 30 minutes without interaction, on
+  **Forget key**, and when Google rejects it. It is never POSTed, stored or logged. The whole
+  option is gated behind `NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE`, and the Google hosts enter
+  the Content-Security-Policy only under that flag.
+- `docs/maps.md` — creating a Google Cloud project, enabling the Maps JavaScript API,
+  restricting the key by referrer *and* by API, setting a billing budget, and why the key is
+  session-scoped here.
+
+- **Crawling is opt-in.** A search no longer visits third-party websites unless asked:
+  a checkbox on the search form, or a **Crawl these websites** action on a finished result
+  set (`POST /api/search/{id}/crawl`, one job per *domain* rather than per result, capped
+  by role, rate limited 2/min, and closed to anonymous callers).
+- `crawler.enabled` — seeded in `settings` since migration 0007 with nothing reading it — is
+  now the deployment-wide kill switch for both entry points.
+- `robots.txt` responses are cached in `robots_cache` for 24 hours (1 hour for a 5xx, which
+  keeps meaning "assume disallowed" until it expires). That table has existed since
+  migration 0005 unused, so every crawl was re-fetching `robots.txt`.
+
 - **Model providers are configurable from `/admin/providers`.** `provider_settings` — a
   table that existed since 0007 with no code behind it — now backs a real form: provider,
   model, endpoint, a write-only API key field, and a **Test connection** button that runs a
@@ -70,6 +104,13 @@ Every code change adds an entry under `[Unreleased]` in the same commit.
 
 ### Changed
 
+- `README.md` now points at the installation guide, warns about the migration step, and no
+  longer claims the seeded password can be changed under `/admin/users` — that screen does
+  not exist yet. `docs/deployment.md` gained the reverse-proxy header and trusted-proxy-hop
+  guidance and defers variable documentation to `docs/configuration.md`.
+- Removed `POSTGRES_PORT` and `REDIS_PORT` from `.env.example`. Nothing read them: the
+  production stack deliberately publishes neither service, and CI uses an overlay with fixed
+  loopback ports.
 - Admin authentication moved from HTTP Basic to session cookies. `ADMIN_USERNAME` no longer
   authenticates anything; `ADMIN_PASSWORD` now seeds the first account instead of guarding
   the area directly. **Every `/api/admin/*` route now performs its own `requireAdmin()`
@@ -99,6 +140,9 @@ Every code change adds an entry under `[Unreleased]` in the same commit.
   `height: 100%` of a fixed-height aside. The map now takes the space the legend does not.
 - `docs/security.md` pointed at `apps/web/src/middleware.ts` for the admin authentication
   boundary. Next 16 renamed that file to `apps/web/src/proxy.ts`.
+- `docs/security.md` still stated that API keys come from the environment only and that
+  `provider_settings` holds nothing but a variable name. Encrypted storage landed in the same
+  release, so the section described a rule the code no longer follows.
 
 ## [0.1.0]
 

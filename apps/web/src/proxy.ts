@@ -37,6 +37,8 @@ function applySecurityHeaders(response: NextResponse, nonce: string): NextRespon
       nonce,
       development: process.env.NODE_ENV === 'development',
       tileOrigin: tileOriginFrom(process.env.NEXT_PUBLIC_MAP_TILE_URL),
+      // Google hosts enter the policy only where the Google map is offered.
+      googleMaps: process.env.NEXT_PUBLIC_MAP_PROVIDER_ALLOW_GOOGLE === 'true',
     }),
   );
   return response;
