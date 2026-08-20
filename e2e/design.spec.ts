@@ -31,6 +31,13 @@ test('theme preference resolves before hydration and persists', async ({ page })
   await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'system');
 });
 
+test('global footer shows attribution and version', async ({ page }) => {
+  await page.goto('/');
+  const footer = page.getByRole('contentinfo');
+  await expect(footer.getByText('Made with Love by Ayal Othman from ExpoXR')).toBeVisible();
+  await expect(footer.getByText('Version 0.1.0')).toBeVisible();
+});
+
 test('mobile filters collapse without hiding the search workspace', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/search?mode=jobs');

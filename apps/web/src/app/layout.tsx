@@ -7,11 +7,15 @@ import { AccountNav } from '@/components/AccountNav';
 import { ThemeControl } from '@/components/ThemeControl';
 import { getCurrentUser } from '@/lib/auth';
 
+import packageJson from '../../package.json';
 import './expoxr-system.css';
 import './globals.css';
 
 // The header reflects who is signed in, so the shell is rendered per request.
 export const dynamic = 'force-dynamic';
+
+const appVersion = packageJson.version;
+const appVersionLabel = `Version ${appVersion}`;
 
 export const metadata: Metadata = {
   title: {
@@ -78,6 +82,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <main id="main" tabIndex={-1}>
           {children}
         </main>
+        <footer className="app-footer">
+          <p>Made with Love by Ayal Othman from ExpoXR</p>
+          <p>{appVersionLabel}</p>
+        </footer>
       </body>
     </html>
   );

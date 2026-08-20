@@ -51,6 +51,7 @@ RUN addgroup -g 1001 -S nodejs \
 # app actually imports.
 COPY --from=build --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 COPY --from=build --chown=nextjs:nodejs /app/migrations ./migrations
 
 USER nextjs

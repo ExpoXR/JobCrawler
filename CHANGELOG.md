@@ -11,6 +11,11 @@ Every code change adds an entry under `[Unreleased]` in the same commit.
 
 ### Added
 
+- Global footer with ExpoXR attribution and the current web app version.
+
+- Favicon endpoint and standalone-image public asset copy so local fonts and browser icons
+  load in production.
+
 - **`docs/installation.md`** — prerequisites for both paths, the Docker and local-development
   setups, the toolchain container for machines without Node, first-run bootstrap, how to
   verify a deployment, a least-privilege database role, and a troubleshooting table. It says
