@@ -9,7 +9,15 @@ Every code change adds an entry under `[Unreleased]` in the same commit.
 
 ## [Unreleased]
 
+### Changed
+
+- Changed the shared ExpoXR XR wordmark and generated browser icons from orange to blue.
+
 ### Added
+
+- Dark-first ExpoXR workspace styling with only Dark and Light theme choices, automatic migration
+  of legacy System preferences to Dark, and the accessible black/purple product palette across
+  login, search, map, results, tables, administration, focus and control states.
 
 - Global footer with ExpoXR attribution and the current web app version.
 

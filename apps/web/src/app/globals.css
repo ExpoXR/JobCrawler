@@ -9,7 +9,7 @@
   --text: var(--ex-text);
   --text-muted: var(--ex-muted);
   --accent: var(--ex-accent);
-  --accent-contrast: var(--ex-surface-strong);
+  --accent-contrast: var(--ex-on-accent);
   --success: var(--ex-success);
   --warning: var(--ex-warning);
   --danger: var(--ex-danger);
@@ -55,7 +55,7 @@ a:focus-visible {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ex-focus);
   outline-offset: 2px;
 }
 

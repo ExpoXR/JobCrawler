@@ -45,15 +45,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html
       lang="en"
+      data-theme="dark"
+      data-expo-theme="dark"
       data-expo-product="expojobcrawler"
       data-expo-profile="workspace"
+      data-theme-preference="dark"
       suppressHydrationWarning
     >
       <head>
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('expojobcrawler-theme')||'light';t=/^(light|dark|system)$/.test(t)?t:'light';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);var r=d?'dark':'light';document.documentElement.dataset.theme=r;document.documentElement.dataset.expoTheme=r;document.documentElement.dataset.themePreference=t;}catch(e){document.documentElement.dataset.theme='light';document.documentElement.dataset.expoTheme='light';document.documentElement.dataset.themePreference='light';}`,
+            __html: `try{var v=localStorage.getItem('expojobcrawler-theme');var t=v==='light'?'light':'dark';if(v!==t)localStorage.setItem('expojobcrawler-theme',t);document.documentElement.dataset.theme=t;document.documentElement.dataset.expoTheme=t;document.documentElement.dataset.themePreference=t;}catch(e){document.documentElement.dataset.theme='dark';document.documentElement.dataset.expoTheme='dark';document.documentElement.dataset.themePreference='dark';}`,
           }}
         />
       </head>

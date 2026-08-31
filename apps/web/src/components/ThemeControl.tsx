@@ -2,45 +2,31 @@
 
 import { useEffect, useState } from 'react';
 
-type ThemePreference = 'light' | 'dark' | 'system';
+type ThemePreference = 'light' | 'dark';
 
 const STORAGE_KEY = 'expojobcrawler-theme';
 
 function isThemePreference(value: string | null): value is ThemePreference {
-  return value === 'light' || value === 'dark' || value === 'system';
-}
-
-function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
-  return preference === 'dark' ||
-    (preference === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    ? 'dark'
-    : 'light';
+  return value === 'light' || value === 'dark';
 }
 
 function applyTheme(preference: ThemePreference): void {
-  const resolved = resolveTheme(preference);
   const root = document.documentElement;
-  root.dataset.theme = resolved;
-  root.dataset.expoTheme = resolved;
+  root.dataset.theme = preference;
+  root.dataset.expoTheme = preference;
   root.dataset.themePreference = preference;
 }
 
 export function ThemeControl() {
-  const [preference, setPreference] = useState<ThemePreference>('light');
+  const [preference, setPreference] = useState<ThemePreference>('dark');
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    const initial = isThemePreference(stored) ? stored : 'light';
+    const initial = isThemePreference(stored) ? stored : 'dark';
+    if (stored !== initial) window.localStorage.setItem(STORAGE_KEY, initial);
     setPreference(initial);
     applyTheme(initial);
   }, []);
-
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => applyTheme(preference);
-    media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, [preference]);
 
   const update = (next: ThemePreference) => {
     window.localStorage.setItem(STORAGE_KEY, next);
@@ -56,9 +42,8 @@ export function ThemeControl() {
         value={preference}
         onChange={(event) => update(event.target.value as ThemePreference)}
       >
-        <option value="light">Light</option>
         <option value="dark">Dark</option>
-        <option value="system">System</option>
+        <option value="light">Light</option>
       </select>
     </label>
   );
