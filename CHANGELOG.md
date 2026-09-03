@@ -9,6 +9,9 @@ Every code change adds an entry under `[Unreleased]` in the same commit.
 
 ## [Unreleased]
 
+- Regenerated the design adapter after the canonical ExpoXR token source gained the `reader`
+  profile. No application styling changes; the file is generated and must match the canonical
+  checksum.
 ### Changed
 
 - Changed the shared ExpoXR XR wordmark and generated browser icons from orange to blue.

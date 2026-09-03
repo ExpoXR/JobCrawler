@@ -124,6 +124,15 @@
   --ex-shadow-md: 0 12px 36px rgb(15 15 15 / 7%);
 }
 
+/* Reader-facing customer output: the ExpoRead viewer shipped inside a static export. Not
+   `workspace` -- it has no application chrome and no theme picker -- and not `flagship`, which
+   carries editorial motion a publication must not inherit. It supplies chrome defaults only; every
+   value a publication can configure lives in a separate namespace and is written as an inline
+   custom property at runtime. See Design-full.md §17 exception E-001. */
+[data-expo-profile="reader"] {
+  --ex-motion-base: 220ms;
+}
+
 .ex-shell {
   width: min(calc(100% - (var(--ex-gutter) * 2)), var(--ex-shell));
   margin-inline: auto;
