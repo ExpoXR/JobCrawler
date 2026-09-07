@@ -13,6 +13,6 @@
     "@ejc/database": "*",
     "@ejc/shared": "*",
     "cheerio": "^1.0.0",
-    "fast-xml-parser": "5.11.0"
+    "fast-xml-parser": "5.11.1"
   }
 }
