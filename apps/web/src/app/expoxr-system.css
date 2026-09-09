@@ -21,13 +21,40 @@
   --ex-font-compact: "JetBrains Mono", ui-monospace, monospace;
   --ex-black: #000000;
   --ex-paper: #bbe1fa;
+  --ex-paper-soft: #ddeaf3;
   --ex-white: #ffffff;
   --ex-tint: #d9effd;
   --ex-blue-deep: #0f4c75;
   --ex-blue: #3282b8;
   --ex-orange: #f36e24;
-  --ex-page: #1b262c;
-  --ex-surface: color-mix(in srgb, #0f4c75 30%, #1b262c);
+  /* Theme-independent neutrals. Same values the semantic tokens below resolve to in one theme or
+     the other, named here so a consumer that must express BOTH arms at once can do it from the
+     canonical source instead of duplicating hex. The website's Azurio compatibility layer needs
+     exactly that: the template maps `--x--light` / `--x--dark` pairs onto the active `--x`, so it
+     has to name both grounds simultaneously and cannot read a token that has already flipped. */
+  --ex-ink: #0d1112;
+  --ex-ink-raised: #20343e;
+  --ex-slate: #3f5865;
+  --ex-slate-soft: #566f7b;
+  --ex-mist: #a9c8dc;
+  --ex-mist-soft: #87aabc;
+  /* Product signatures, addressable by name from any scope.
+     `--ex-signature` below resolves to whichever product owns the current subtree, which is right
+     for chrome and wrong for anything that must show several products at once — a family gradient,
+     a product grid, a comparison table. Those surfaces were reaching for raw hex because the
+     registry was only readable one product at a time. These are the same values the
+     `[data-expo-product]` blocks assign, named once so nothing has to duplicate them. */
+  --ex-signature-expoxr: #3282b8;
+  --ex-signature-explorexr: #2aace2;
+  --ex-signature-cmxr: #8062aa;
+  --ex-signature-exporead: #5c5470;
+  --ex-signature-insightai: #3a9188;
+  --ex-signature-a11ysuite: #7344f4;
+  --ex-signature-a11ysuite-accent: #f8c744;
+  --ex-signature-jobcrawler: #8e05c2;
+  --ex-signature-exposcout: #a7d129;
+  --ex-page: #0d1112;
+  --ex-surface: color-mix(in srgb, #0f4c75 30%, #0d1112);
   --ex-surface-strong: #0f4c75;
   --ex-text: #bbe1fa;
   --ex-muted: #a9c8dc;
@@ -37,7 +64,7 @@
   --ex-highlight: #bbe1fa;
   --ex-signature: #3282b8;
   --ex-focus: #bbe1fa;
-  --ex-on-accent: #1b262c;
+  --ex-on-accent: #0d1112;
   --ex-info: #8bd7ff;
   --ex-warning: #f4bf62;
   --ex-danger: #ff9b91;
@@ -79,10 +106,10 @@
 :root[data-expo-theme="light"],
 [data-theme="light"],
 [data-expo-theme="light"] {
-  --ex-page: #bbe1fa;
+  --ex-page: #ddeaf3;
   --ex-surface: #d9effd;
   --ex-surface-strong: #ffffff;
-  --ex-text: #1b262c;
+  --ex-text: #0d1112;
   --ex-muted: #3f5865;
   --ex-muted-soft: #566f7b;
   --ex-accent: #0f4c75;
@@ -103,14 +130,14 @@
   color-scheme: light;
 }
 
-[data-expo-product="expoxr"], [data-expo-product="expoxr-shop"], [data-expo-product="shop"] { --ex-signature: #3282b8; }
-[data-expo-product="explorexr"] { --ex-signature: #2aace2; }
-[data-expo-product="cmxr"] { --ex-signature: #8062aa; }
-[data-expo-product="exporead"] { --ex-page: #2a2438; --ex-surface: #352f44; --ex-surface-strong: color-mix(in srgb, #352f44 80%, #2a2438); --ex-text: #dbd8e3; --ex-muted: #b8b1c7; --ex-muted-soft: #958ca8; --ex-accent: #dbd8e3; --ex-accent-strong: #5c5470; --ex-highlight: #dbd8e3; --ex-signature: #5c5470; --ex-focus: #dbd8e3; --ex-on-accent: #2a2438; }
-[data-expo-product="insightai"], [data-expo-product="insightxr"] { --ex-page: #062925; --ex-surface: #044a42; --ex-surface-strong: color-mix(in srgb, #044a42 82%, #062925); --ex-text: #b8e1dd; --ex-muted: #91bbb6; --ex-muted-soft: #6e9d97; --ex-accent: #b8e1dd; --ex-accent-strong: #044a42; --ex-highlight: #b8e1dd; --ex-signature: #3a9188; --ex-focus: #b8e1dd; --ex-on-accent: #062925; }
-[data-expo-product="a11ysuite"], [data-expo-product="a11ysuite-platform"] { --ex-page: #000000; --ex-surface: #140d24; --ex-surface-strong: #21143d; --ex-text: #ffffff; --ex-muted: #d0c8e6; --ex-muted-soft: #a89bc8; --ex-accent: #f8c744; --ex-accent-strong: #7344f4; --ex-highlight: #f8c744; --ex-signature: #7344f4; --ex-focus: #ffffff; --ex-on-accent: #000000; }
-[data-expo-product="jobcrawler"], [data-expo-product="expojobcrawler"] { --ex-page: #000000; --ex-surface: #3e065f; --ex-surface-strong: #240338; --ex-text: #ffffff; --ex-muted: #d8bfe3; --ex-muted-soft: #b890c9; --ex-accent: #8e05c2; --ex-accent-strong: #700b97; --ex-highlight: #ffffff; --ex-signature: #8e05c2; --ex-focus: #ffffff; --ex-on-accent: #ffffff; }
-[data-expo-product="exposcout"] { --ex-page: #000000; --ex-surface: #3e432e; --ex-surface-strong: #24271b; --ex-text: #ffffff; --ex-muted: #ced6b2; --ex-muted-soft: #a9b488; --ex-accent: #a7d129; --ex-accent-strong: #616f39; --ex-highlight: #a7d129; --ex-signature: #a7d129; --ex-focus: #a7d129; --ex-on-accent: #000000; }
+[data-expo-product="expoxr"], [data-expo-product="expoxr-shop"], [data-expo-product="shop"] { --ex-signature: var(--ex-signature-expoxr); }
+[data-expo-product="explorexr"] { --ex-signature: var(--ex-signature-explorexr); }
+[data-expo-product="cmxr"] { --ex-signature: var(--ex-signature-cmxr); }
+[data-expo-product="exporead"] { --ex-page: #2a2438; --ex-surface: #352f44; --ex-surface-strong: color-mix(in srgb, #352f44 80%, #2a2438); --ex-text: #dbd8e3; --ex-muted: #b8b1c7; --ex-muted-soft: #958ca8; --ex-accent: #dbd8e3; --ex-accent-strong: #5c5470; --ex-highlight: #dbd8e3; --ex-signature: var(--ex-signature-exporead); --ex-focus: #dbd8e3; --ex-on-accent: #2a2438; }
+[data-expo-product="insightai"], [data-expo-product="insightxr"] { --ex-page: #062925; --ex-surface: #044a42; --ex-surface-strong: color-mix(in srgb, #044a42 82%, #062925); --ex-text: #b8e1dd; --ex-muted: #91bbb6; --ex-muted-soft: #6e9d97; --ex-accent: #b8e1dd; --ex-accent-strong: #044a42; --ex-highlight: #b8e1dd; --ex-signature: var(--ex-signature-insightai); --ex-focus: #b8e1dd; --ex-on-accent: #062925; }
+[data-expo-product="a11ysuite"], [data-expo-product="a11ysuite-platform"] { --ex-page: #000000; --ex-surface: #140d24; --ex-surface-strong: #21143d; --ex-text: #ffffff; --ex-muted: #d0c8e6; --ex-muted-soft: #a89bc8; --ex-accent: #f8c744; --ex-accent-strong: #7344f4; --ex-highlight: #f8c744; --ex-signature: var(--ex-signature-a11ysuite); --ex-focus: #ffffff; --ex-on-accent: #000000; }
+[data-expo-product="jobcrawler"], [data-expo-product="expojobcrawler"] { --ex-page: #000000; --ex-surface: #3e065f; --ex-surface-strong: #240338; --ex-text: #ffffff; --ex-muted: #d8bfe3; --ex-muted-soft: #b890c9; --ex-accent: #8e05c2; --ex-accent-strong: #700b97; --ex-highlight: #ffffff; --ex-signature: var(--ex-signature-jobcrawler); --ex-focus: #ffffff; --ex-on-accent: #ffffff; }
+[data-expo-product="exposcout"] { --ex-page: #000000; --ex-surface: #3e432e; --ex-surface-strong: #24271b; --ex-text: #ffffff; --ex-muted: #ced6b2; --ex-muted-soft: #a9b488; --ex-accent: #a7d129; --ex-accent-strong: #616f39; --ex-highlight: #a7d129; --ex-signature: var(--ex-signature-exposcout); --ex-focus: #a7d129; --ex-on-accent: #000000; }
 [data-expo-product="expochat"] { --ex-accent: var(--ex-orange); --ex-signature: var(--ex-orange); }
 
 [data-expo-theme="light"][data-expo-product="exporead"], [data-theme="light"] [data-expo-product="exporead"] { --ex-page: #dbd8e3; --ex-surface: #ebe8ef; --ex-surface-strong: #ffffff; --ex-text: #2a2438; --ex-muted: #514a61; --ex-muted-soft: #6b627d; --ex-accent: #5c5470; --ex-accent-strong: #352f44; --ex-highlight: #5c5470; --ex-focus: #352f44; --ex-on-accent: #ffffff; }
