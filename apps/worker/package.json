@@ -17,7 +17,7 @@
     "@ejc/queue": "*",
     "@ejc/search": "*",
     "@ejc/shared": "*",
-    "bullmq": "^6.1.2",
-    "tsx": "^4.19.0"
+    "bullmq": "^6.3.4",
+    "tsx": "^4.23.13"
   }
 }

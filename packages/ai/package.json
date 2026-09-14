@@ -12,6 +12,6 @@
   "dependencies": {
     "@ejc/database": "*",
     "@ejc/shared": "*",
-    "zod": "^4.0.0"
+    "zod": "^4.6.2"
   }
 }
