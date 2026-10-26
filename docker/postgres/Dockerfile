@@ -7,7 +7,7 @@
 # or extension downgrade is not a valid deployment path for an existing data
 # directory.
 
-FROM postgis/postgis@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
+FROM postgis/postgis@sha256:e84455a058f60f06dd8c40e66a2c628b8fc113d9fca0896e1f308b25b897207f
 
 ENV PG_VERSION=16.15-1.pgdg11+2
 
